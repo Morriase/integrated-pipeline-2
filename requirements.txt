@@ -1,0 +1,7 @@
+torch>=1.13.0
+pandas
+numpy
+scikit-learn
+MetaTrader5
+matplotlib
+tqdm
