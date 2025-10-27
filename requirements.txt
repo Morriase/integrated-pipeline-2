@@ -5,3 +5,4 @@ scikit-learn
 MetaTrader5
 matplotlib
 tqdm
+scikit-fuzzy

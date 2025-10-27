@@ -9,6 +9,11 @@ and other SMC indicators, then generates trading labels.
 Output: A complete CSV dataset with all features and labels for LSTM training.
 """
 
+from forex_lstm.data import (
+    compute_atr, detect_swings, identify_order_blocks, identify_fvgs,
+    detect_candlestick_patterns, detect_mitigation, fuzzy_ob_quality_score,
+    generate_smc_labels as generate_enhanced_smc_labels
+)
 import os
 import pandas as pd
 import numpy as np
@@ -16,6 +21,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore')
+
+# Import SMC functions from the main data module
 
 
 def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -291,61 +298,17 @@ def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def generate_smc_labels(df: pd.DataFrame, lookback: int = 24) -> pd.Series:
-    """Generate trading labels based on SMC strategy with lookback window."""
-    labels = pd.Series(0, index=df.index,
-                       name='label')  # 0: hold, 1: buy, 2: sell
+def generate_smc_labels(df: pd.DataFrame, seq_len: int = 60) -> Tuple[pd.Series, pd.Series]:
+    """Generate enhanced SMC labels with mitigation and quality scoring."""
+    # Use the enhanced SMC labeling from the main data module
+    labels, quality_scores = generate_enhanced_smc_labels(df, seq_len)
 
-    for i in range(len(df)):
-        # Look for SMC signals in the next lookback period
-        future_prices = df.iloc[i:i+lookback] if i + \
-            lookback < len(df) else df.iloc[i:]
+    # Convert back to pandas Series with proper indexing
+    labels_series = pd.Series(labels, index=df.index[seq_len:], name='label')
+    quality_series = pd.Series(
+        quality_scores, index=df.index[seq_len:], name='quality_score')
 
-        if len(future_prices) < 5:  # Need minimum bars for signal
-            continue
-
-        current_price = df.iloc[i]['Close']
-
-        # Bullish signals
-        bullish_signals = (
-            (df.iloc[i]['ob_bullish'] == 1) or  # Order Block bullish
-            (df.iloc[i]['fvg_bullish'] == 1) or  # FVG bullish
-            (df.iloc[i]['bos'] == 1) or         # BOS bullish
-            (df.iloc[i]['choch'] == 1)          # ChoCH bullish
-        )
-
-        # Bearish signals
-        bearish_signals = (
-            (df.iloc[i]['ob_bearish'] == 1) or  # Order Block bearish
-            (df.iloc[i]['fvg_bearish'] == 1) or  # FVG bearish
-            (df.iloc[i]['bos'] == -1) or        # BOS bearish
-            (df.iloc[i]['choch'] == -1)         # ChoCH bearish
-        )
-
-        # Check if signal materializes in lookback period
-        if bullish_signals:
-            # Check for price increase above resistance levels
-            target_price = max(
-                df.iloc[i]['ob_high'] if df.iloc[i]['ob_high'] > 0 else current_price,
-                df.iloc[i]['fvg_top'] if df.iloc[i]['fvg_top'] > 0 else current_price,
-                current_price * 1.005  # 0.5% minimum target
-            )
-
-            if (future_prices['High'] > target_price).any():
-                labels.iloc[i] = 1  # Buy signal
-
-        elif bearish_signals:
-            # Check for price decrease below support levels
-            target_price = min(
-                df.iloc[i]['ob_low'] if df.iloc[i]['ob_low'] > 0 else current_price,
-                df.iloc[i]['fvg_bottom'] if df.iloc[i]['fvg_bottom'] > 0 else current_price,
-                current_price * 0.995  # 0.5% minimum target
-            )
-
-            if (future_prices['Low'] < target_price).any():
-                labels.iloc[i] = 2  # Sell signal
-
-    return labels
+    return labels_series, quality_series
 
 
 def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.DataFrame:
@@ -370,8 +333,12 @@ def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.Dat
     # Add SMC features
     symbol_data = add_smc_features_to_dataframe(symbol_data)
 
-    # Generate labels
-    symbol_data['label'] = generate_smc_labels(symbol_data)
+    # Generate labels with quality scores
+    labels, quality_scores = generate_smc_labels(symbol_data)
+
+    # Add to dataframe
+    symbol_data['label'] = labels
+    symbol_data['quality_score'] = quality_scores
 
     # Add symbol/timeframe identifiers
     symbol_data['symbol'] = symbol
