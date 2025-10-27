@@ -9,6 +9,7 @@ from torch.cuda.amp import GradScaler, autocast
 import MetaTrader5 as mt5
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 
 from .data import download_ticker, load_csv, prepare_ohlc_series, scale_series, save_scaler, generate_smc_labels, initialize_mt5
 from .model import LSTMClassifier
@@ -396,6 +397,90 @@ def main():
     print(f"- Final learning rate: {training_history[-1]['lr']:.6f}")
     print(
         f"- Training time: ~{len(training_history) * 0.5:.1f} minutes (estimated)")
+
+    # Generate training curves for overfitting detection
+    plot_training_curves(training_history, args.out_dir)
+
+
+def plot_training_curves(training_history, out_dir):
+    """Plot training and validation loss/accuracy curves for overfitting detection."""
+    epochs = [h['epoch'] for h in training_history]
+    train_losses = [h['train_loss'] for h in training_history]
+    val_losses = [h['val_loss'] for h in training_history]
+    train_accs = [h['train_acc'] for h in training_history]
+    val_accs = [h['val_acc'] for h in training_history]
+
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+    # Loss curves
+    ax1.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
+    ax1.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
+    ax1.set_title('Training vs Validation Loss', fontsize=14, fontweight='bold')
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.legend(fontsize=11)
+    ax1.grid(True, alpha=0.3)
+
+    # Add overfitting indicators
+    if len(val_losses) > 10:
+        # Check for overfitting: val loss increasing while train loss decreasing
+        recent_train = train_losses[-10:]
+        recent_val = val_losses[-10:]
+        if recent_val[-1] > recent_val[0] and recent_train[-1] < recent_train[0]:
+            ax1.axvspan(len(epochs)-10, len(epochs), alpha=0.2, color='red', label='Potential Overfitting')
+            ax1.legend(fontsize=11)
+
+    # Accuracy curves
+    ax2.plot(epochs, train_accs, 'b-', label='Training Accuracy', linewidth=2)
+    ax2.plot(epochs, val_accs, 'r-', label='Validation Accuracy', linewidth=2)
+    ax2.set_title('Training vs Validation Accuracy', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.set_ylabel('Accuracy', fontsize=12)
+    ax2.legend(fontsize=11)
+    ax2.grid(True, alpha=0.3)
+
+    # Add overfitting indicators for accuracy
+    if len(val_accs) > 10:
+        recent_train_acc = train_accs[-10:]
+        recent_val_acc = val_accs[-10:]
+        if recent_val_acc[-1] < recent_val_acc[0] and recent_train_acc[-1] > recent_train_acc[0]:
+            ax2.axvspan(len(epochs)-10, len(epochs), alpha=0.2, color='red', label='Potential Overfitting')
+            ax2.legend(fontsize=11)
+
+    plt.tight_layout()
+
+    # Save plot
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    plot_path = os.path.join(out_dir, f'training_curves_{timestamp}.png')
+    plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"Training curves saved: {plot_path}")
+
+    # Print overfitting analysis
+    print("\nOverfitting Analysis:")
+    final_train_loss = train_losses[-1]
+    final_val_loss = val_losses[-1]
+    final_train_acc = train_accs[-1]
+    final_val_acc = val_accs[-1]
+
+    loss_gap = final_train_loss - final_val_loss
+    acc_gap = final_train_acc - final_val_acc
+
+    print(".6f")
+    print(".6f")
+    print(".6f")
+
+    if loss_gap > 0.1:
+        print("⚠️  WARNING: Large loss gap suggests potential overfitting!")
+    elif loss_gap < -0.1:
+        print("⚠️  WARNING: Validation loss lower than training loss - possible underfitting!")
+
+    if acc_gap > 0.1:
+        print("⚠️  WARNING: Large accuracy gap suggests potential overfitting!")
+    elif acc_gap < -0.1:
+        print("⚠️  WARNING: Validation accuracy much lower - possible underfitting!")
 
 
 if __name__ == '__main__':
