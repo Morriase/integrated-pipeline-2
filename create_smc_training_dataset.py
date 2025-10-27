@@ -181,10 +181,10 @@ def detect_bos_choch(df: pd.DataFrame) -> pd.DataFrame:
     # ChoCH: change in market structure (higher highs/lower lows vs lower highs/higher lows)
     for i in range(10, len(df)):
         # Bullish ChoCH: higher high and higher low after lower high and lower low
-        recent_hh = df.loc[i-10:i, 'High'].max()
-        recent_hl = df.loc[i-10:i, 'Low'].max()
-        prev_hh = df.loc[i-20:i-10, 'High'].max()
-        prev_hl = df.loc[i-20:i-10, 'Low'].max()
+        recent_hh = df.iloc[i-10:i]['High'].max()
+        recent_hl = df.iloc[i-10:i]['Low'].max()
+        prev_hh = df.iloc[i-20:i-10]['High'].max()
+        prev_hl = df.iloc[i-20:i-10]['Low'].max()
 
         if recent_hh > prev_hh and recent_hl > prev_hl:
             df.loc[i, 'choch'] = 1
