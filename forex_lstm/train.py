@@ -1,3 +1,9 @@
+# Ensure we're in the correct working directory for Kaggle
+import os
+if os.path.exists('/kaggle/working'):
+    # If running on Kaggle, change to the working directory
+    os.chdir('/kaggle/working')
+
 import argparse
 import os
 from datetime import datetime
@@ -148,8 +154,8 @@ def main():
 
     # Load data - smart defaults for prepared datasets
     dataset_paths = [
-        "smc_lstm_training_dataset.csv",  # Preferred: SMC-enhanced dataset
-        "consolidated_dataset.csv"        # Fallback: basic consolidated dataset
+        "/kaggle/working/training_data/smc_lstm_training_dataset.csv",  # Preferred: SMC-enhanced dataset
+        "/kaggle/working/training_data/consolidated_dataset.csv"        # Fallback: basic consolidated dataset
     ]
 
     dataset_found = False

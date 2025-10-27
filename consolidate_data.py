@@ -6,6 +6,11 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
+# Ensure we're in the correct working directory for Kaggle
+if os.path.exists('/kaggle/working'):
+    # If running on Kaggle, change to the working directory
+    os.chdir('/kaggle/working')
+
 
 def load_all_data(data_dir: str = "/kaggle/input/pipeline2/DATA") -> pd.DataFrame:
     """Load all CSV files from data directory and consolidate."""

@@ -9,11 +9,6 @@ and other SMC indicators, then generates trading labels.
 Output: A complete CSV dataset with all features and labels for LSTM training.
 """
 
-from forex_lstm.data import (
-    compute_atr, detect_swings, identify_order_blocks, identify_fvgs,
-    detect_candlestick_patterns, detect_mitigation, fuzzy_ob_quality_score,
-    generate_smc_labels as generate_enhanced_smc_labels
-)
 import os
 import pandas as pd
 import numpy as np
@@ -21,6 +16,11 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore')
+
+# Ensure we're in the correct working directory for Kaggle
+if os.path.exists('/kaggle/working'):
+    # If running on Kaggle, change to the working directory
+    os.chdir('/kaggle/working')
 
 # Import SMC functions from the main data module
 
