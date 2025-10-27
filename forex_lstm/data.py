@@ -191,6 +191,13 @@ def detect_candlestick_patterns(df: pd.DataFrame) -> pd.DataFrame:
         (df['Low'] <= df['Low'].shift(1))
     )
 
+    # Hammer patterns (long lower wick, small body)
+    patterns['hammer'] = (
+        (lower_wick > body_size * 2) &
+        (lower_wick > upper_wick) &
+        (body_size < total_range * 0.3)
+    )
+
     return patterns
 
 
@@ -262,18 +269,11 @@ def fuzzy_ob_quality_score(ob: pd.Series, df: pd.DataFrame, patterns: pd.DataFra
         displacement_score = min(ob.get('displacement_atr', 1.0) / 3.0, 1.0)
         volume_score = min(df.iloc[ob['index']]['Volume'] / 100000, 1.0)
 
-        # Pattern proximity score
-        pattern_bonus = 0.0
-        if patterns is not None:
-            ob_idx = ob['index']
-            lookback_window = patterns.iloc[max(
-                0, ob_idx-5):min(len(patterns), ob_idx+5)]
-            if ob['type'] == 'bullish':
-                pattern_bonus = lookback_window[[
-                    'bullish_pin', 'bullish_engulfing']].any().any() * 0.2
-            else:
-                pattern_bonus = lookback_window[[
-                    'bearish_pin', 'bearish_engulfing']].any().any() * 0.2
+        # Enhanced pattern quality analysis (replaces simple pattern proximity)
+        pattern_quality_score = 0.0
+        if patterns is not None and ob['index'] < len(patterns):
+            pattern_quality_score = calculate_pattern_quality_score(
+                patterns.iloc[ob['index']], df.iloc[ob['index']], ob['type'])
 
         # Volatility context score
         atr = compute_atr(df)
@@ -284,13 +284,13 @@ def fuzzy_ob_quality_score(ob: pd.Series, df: pd.DataFrame, patterns: pd.DataFra
         current_idx = len(df) - 1
         recency_score = max(0, 1 - (current_idx - ob['index']) / 100)
 
-        # Combine scores with weights
+        # Combine scores with updated weights
         final_score = (
-            displacement_score * 0.3 +  # Displacement importance
-            volume_score * 0.2 +        # Volume confirmation
-            pattern_bonus +             # Pattern bonus
-            volatility_score * 0.2 +    # Market context
-            recency_score * 0.1         # Recency preference
+            displacement_score * 0.25 +   # Displacement importance (reduced)
+            volume_score * 0.15 +         # Volume confirmation (reduced)
+            pattern_quality_score * 0.35 + # Enhanced pattern quality (increased)
+            volatility_score * 0.15 +     # Market context
+            recency_score * 0.10          # Recency preference
         )
 
         return min(final_score, 1.0)
@@ -298,6 +298,133 @@ def fuzzy_ob_quality_score(ob: pd.Series, df: pd.DataFrame, patterns: pd.DataFra
     except Exception as e:
         # Fallback to simple scoring if anything fails
         return (displacement_score + volume_score) / 2.0
+
+
+def calculate_pattern_quality_score(pattern_row: pd.Series, candle_row: pd.Series, ob_type: str) -> float:
+    """Calculate sophisticated pattern quality score using fuzzy logic."""
+    quality_score = 0.0
+
+    # Pin Bar Quality Assessment
+    if ob_type == 'bullish' and pattern_row.get('bullish_pin', False):
+        quality_score = max(quality_score, calculate_pin_quality(candle_row, 'bullish'))
+    elif ob_type == 'bearish' and pattern_row.get('bearish_pin', False):
+        quality_score = max(quality_score, calculate_pin_quality(candle_row, 'bearish'))
+
+    # Engulfing Pattern Quality
+    if pattern_row.get('bullish_engulfing', False) or pattern_row.get('bearish_engulfing', False):
+        quality_score = max(quality_score, calculate_engulfing_quality(candle_row, ob_type))
+
+    # Hammer Pattern Quality (if we add hammer detection)
+    if pattern_row.get('hammer', False):
+        quality_score = max(quality_score, calculate_hammer_quality(candle_row))
+
+    return quality_score
+
+
+def calculate_pin_quality(candle: pd.Series, direction: str) -> float:
+    """Calculate pin bar quality using fuzzy logic (0-1 scale)."""
+    try:
+        open_price = candle['Open']
+        high_price = candle['High']
+        low_price = candle['Low']
+        close_price = candle['Close']
+
+        total_range = high_price - low_price
+        if total_range == 0:
+            return 0.0
+
+        body_size = abs(close_price - open_price)
+        body_ratio = body_size / total_range
+
+        if direction == 'bullish':
+            # Bullish pin: long lower wick, small body, short upper wick
+            lower_wick = open_price - low_price if close_price > open_price else close_price - low_price
+            upper_wick = high_price - max(open_price, close_price)
+
+            lower_wick_ratio = lower_wick / total_range
+            upper_wick_ratio = upper_wick / total_range
+
+            # Fuzzy scoring: lower wick should be > 60%, upper wick < 20%, body < 30%
+            lower_wick_score = min(lower_wick_ratio / 0.6, 1.0)  # Ideal: 60%+
+            upper_wick_score = max(0, 1 - (upper_wick_ratio / 0.2))  # Ideal: <20%
+            body_score = max(0, 1 - (body_ratio / 0.3))  # Ideal: <30%
+
+        else:  # bearish
+            # Bearish pin: long upper wick, small body, short lower wick
+            upper_wick = high_price - max(open_price, close_price)
+            lower_wick = min(open_price, close_price) - low_price
+
+            upper_wick_ratio = upper_wick / total_range
+            lower_wick_ratio = lower_wick / total_range
+
+            # Fuzzy scoring: upper wick should be > 60%, lower wick < 20%, body < 30%
+            upper_wick_score = min(upper_wick_ratio / 0.6, 1.0)  # Ideal: 60%+
+            lower_wick_score = max(0, 1 - (lower_wick_ratio / 0.2))  # Ideal: <20%
+            body_score = max(0, 1 - (body_ratio / 0.3))  # Ideal: <30%
+
+        # Combine scores with weights
+        final_score = (lower_wick_score * 0.4 + upper_wick_score * 0.3 + body_score * 0.3)
+
+        return min(final_score, 1.0)
+
+    except:
+        return 0.0
+
+
+def calculate_engulfing_quality(candle: pd.Series, ob_type: str) -> float:
+    """Calculate engulfing pattern quality using fuzzy logic."""
+    try:
+        body_size = abs(candle['Close'] - candle['Open'])
+        total_range = candle['High'] - candle['Low']
+
+        if total_range == 0:
+            return 0.0
+
+        body_ratio = body_size / total_range
+
+        # Engulfing patterns should have large bodies
+        body_score = min(body_ratio / 0.7, 1.0)  # Ideal: 70%+ body
+
+        # Small wicks are better for engulfing
+        upper_wick = candle['High'] - max(candle['Open'], candle['Close'])
+        lower_wick = min(candle['Open'], candle['Close']) - candle['Low']
+        total_wicks = upper_wick + lower_wick
+        wick_ratio = total_wicks / total_range
+        wick_score = max(0, 1 - wick_ratio)  # Prefer small wicks
+
+        # Direction alignment bonus
+        direction_score = 1.0  # Engulfing patterns are inherently directional
+
+        final_score = (body_score * 0.5 + wick_score * 0.3 + direction_score * 0.2)
+        return min(final_score, 1.0)
+
+    except:
+        return 0.0
+
+
+def calculate_hammer_quality(candle: pd.Series) -> float:
+    """Calculate hammer pattern quality (works for both bullish/bearish hammers)."""
+    try:
+        total_range = candle['High'] - candle['Low']
+        if total_range == 0:
+            return 0.0
+
+        body_size = abs(candle['Close'] - candle['Open'])
+        body_ratio = body_size / total_range
+
+        # Hammer should have small body and long lower wick
+        lower_wick = min(candle['Open'], candle['Close']) - candle['Low']
+        lower_wick_ratio = lower_wick / total_range
+
+        # Fuzzy scoring
+        body_score = max(0, 1 - (body_ratio / 0.3))  # Prefer small body (<30%)
+        wick_score = min(lower_wick_ratio / 0.6, 1.0)  # Prefer long lower wick (60%+)
+
+        final_score = (body_score * 0.4 + wick_score * 0.6)
+        return min(final_score, 1.0)
+
+    except:
+        return 0.0
 
 
 def detect_swings(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
