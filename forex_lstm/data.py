@@ -5,7 +5,15 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-import MetaTrader5 as mt5
+
+# Optional MT5 import - only needed for live data download
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    print("MetaTrader5 not available - live data download disabled")
+
 from sklearn.preprocessing import MinMaxScaler
 
 from .utils import create_sequences
@@ -13,16 +21,24 @@ from .utils import create_sequences
 
 def initialize_mt5():
     """Initialize MetaTrader 5 connection."""
+    if not MT5_AVAILABLE:
+        raise RuntimeError("MetaTrader5 not available on this system")
     if not mt5.initialize():
         raise RuntimeError(f"MT5 initialization failed: {mt5.last_error()}")
     print("MT5 initialized successfully")
 
 
-def download_ticker(symbol: str, timeframe=mt5.TIMEFRAME_H1, bars: int = 10000, save_path: str = None) -> pd.DataFrame:
+def download_ticker(symbol: str, timeframe=None, bars: int = 10000, save_path: str = None) -> pd.DataFrame:
     """Download OHLCV data for a symbol using MT5. Default is 10,000 H1 bars.
 
     For forex, common symbols are 'EURUSD', 'GBPUSD', etc.
     """
+    if not MT5_AVAILABLE:
+        raise RuntimeError("MetaTrader5 not available on this system - cannot download live data")
+
+    # Set default timeframe if MT5 is available
+    if timeframe is None:
+        timeframe = mt5.TIMEFRAME_H1
     if not mt5.initialize():
         initialize_mt5()
 
@@ -53,6 +69,9 @@ def download_ticker(symbol: str, timeframe=mt5.TIMEFRAME_H1, bars: int = 10000, 
 
 def download_multi_timeframe(symbol: str, bars: int = 10000) -> pd.DataFrame:
     """Download OHLCV data for multiple timeframes: M15, H1, H4."""
+    if not MT5_AVAILABLE:
+        raise RuntimeError("MetaTrader5 not available on this system - cannot download live data")
+
     timeframes = [
         (mt5.TIMEFRAME_M15, 'M15'),
         (mt5.TIMEFRAME_H1, 'H1'),

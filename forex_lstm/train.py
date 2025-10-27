@@ -13,7 +13,16 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler, autocast
-import MetaTrader5 as mt5
+
+# Optional MT5 import - only needed for live data download
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    MT5_AVAILABLE = False
+    mt5 = None
+    print("MetaTrader5 not available - live data download disabled")
+
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -25,12 +34,22 @@ from .model import LSTMClassifier
 from .utils import create_sequences, SequenceDataset
 
 
-TIMEFRAME_MAP = {
-    'M15': mt5.TIMEFRAME_M15,
-    'H1': mt5.TIMEFRAME_H1,
-    'H4': mt5.TIMEFRAME_H4,
-    'D1': mt5.TIMEFRAME_D1,
-}
+# Timeframe mapping - fallback values if MT5 not available
+if MT5_AVAILABLE:
+    TIMEFRAME_MAP = {
+        'M15': mt5.TIMEFRAME_M15,
+        'H1': mt5.TIMEFRAME_H1,
+        'H4': mt5.TIMEFRAME_H4,
+        'D1': mt5.TIMEFRAME_D1,
+    }
+else:
+    # Fallback numeric values (these won't be used for actual MT5 calls)
+    TIMEFRAME_MAP = {
+        'M15': 1,  # Placeholder
+        'H1': 2,   # Placeholder
+        'H4': 3,   # Placeholder
+        'D1': 4,   # Placeholder
+    }
 
 
 def train_epoch(model, loader, opt, loss_fn, device):
@@ -185,6 +204,8 @@ def main():
             else:
                 raise FileNotFoundError(f"Dataset not found: {args.ticker}")
         else:
+            if not MT5_AVAILABLE:
+                raise RuntimeError(f"No prepared datasets found and MetaTrader5 not available. Please prepare your dataset first using consolidate_data.py and create_smc_training_dataset.py")
             print(
                 f"No prepared datasets found. Downloading {args.ticker} from MT5...")
             initialize_mt5()
