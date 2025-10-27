@@ -102,6 +102,12 @@ Classification → Dense(32) → ReLU → Dropout(0.1) → Dense(3)
 - **Multi-GPU Support**: Automatic DataParallel scaling
 - **cuDNN Optimization**: Benchmark mode for faster convolutions
 
+### **Advanced Optimization for Convergence**
+- **AdamW (Default)**: Better generalization than Adam, proper weight decay
+- **SGD with Momentum**: Classical optimizer with Nesterov momentum for escaping local minima
+- **RMSprop**: Adaptive learning rates with momentum for stable convergence
+- **Cosine Annealing**: Cyclical learning rate scheduling to explore different optima
+
 ### **Training Curves & Overfitting Detection**
 - **Automatic Plotting**: Loss and accuracy curves saved as PNG
 - **Overfitting Analysis**: Gap detection with warning thresholds
@@ -119,6 +125,9 @@ batch_size: 64
 learning_rate: 0.001 (scheduled)
 weight_decay: 0.0001 (L2 regularization)
 sequence_length: 60
+optimizer: adamw (with momentum)
+momentum: 0.9 (for SGD)
+nesterov: True (for SGD)
 ```
 
 ### **Advanced Training Examples**
@@ -138,6 +147,11 @@ python -m forex_lstm.train --ticker EURUSD --timeframe H4 --bars 5000
 
 # Disable bidirectional for faster training
 python -m forex_lstm.train --no-bidirectional --num-layers 3
+
+# Optimizer experiments for better convergence
+python -m forex_lstm.train --optimizer sgd --momentum 0.95 --nesterov --lr 0.01
+python -m forex_lstm.train --optimizer adamw --lr 0.0005  # Recommended default
+python -m forex_lstm.train --optimizer rmsprop --momentum 0.9 --lr 0.001
 ```
 
 ## 📊 SMC Strategy Implementation

@@ -74,6 +74,12 @@ def main():
                         help="Initial learning rate")
     parser.add_argument("--weight-decay", type=float, default=1e-4,
                         help="L2 regularization weight decay")
+    parser.add_argument("--optimizer", type=str, default="adamw", choices=["adam", "adamw", "sgd", "rmsprop"],
+                        help="Optimizer to use (adamw recommended for better generalization)")
+    parser.add_argument("--momentum", type=float, default=0.9,
+                        help="Momentum for SGD optimizer (0.9 recommended)")
+    parser.add_argument("--nesterov", action="store_true", default=True,
+                        help="Use Nesterov momentum for SGD (improves convergence)")
     parser.add_argument("--hidden", type=int, default=128,
                         help="LSTM hidden size")
     parser.add_argument("--num-layers", type=int, default=4,
@@ -221,14 +227,37 @@ def main():
             print(f"Using {torch.cuda.device_count()} GPUs with DataParallel")
             model = nn.DataParallel(model)
 
-    # Optimizer with weight decay (L2 regularization)
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr,
-                           weight_decay=args.weight_decay)
+    # Enhanced optimizer selection with momentum options
+    if args.optimizer == "adam":
+        opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizer_name = f"Adam(lr={args.lr}, weight_decay={args.weight_decay})"
+    elif args.optimizer == "adamw":
+        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizer_name = f"AdamW(lr={args.lr}, weight_decay={args.weight_decay})"
+    elif args.optimizer == "sgd":
+        opt = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
+                              weight_decay=args.weight_decay, nesterov=args.nesterov)
+        optimizer_name = f"SGD(lr={args.lr}, momentum={args.momentum}, nesterov={args.nesterov}, weight_decay={args.weight_decay})"
+    elif args.optimizer == "rmsprop":
+        opt = torch.optim.RMSprop(model.parameters(), lr=args.lr, momentum=args.momentum,
+                                  weight_decay=args.weight_decay)
+        optimizer_name = f"RMSprop(lr={args.lr}, momentum={args.momentum}, weight_decay={args.weight_decay})"
 
-    # Learning rate scheduler
+    # Enhanced learning rate scheduler options
     if args.lr_schedule:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            opt, mode='max', factor=0.5, patience=5, min_lr=1e-6, verbose=False)
+        if args.optimizer in ["sgd", "rmsprop"]:
+            # Cosine annealing works better with momentum-based optimizers
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                opt, T_0=10, T_mult=2, eta_min=args.lr * 0.01)
+            scheduler_name = f"CosineAnnealingWarmRestarts(T_0=10, eta_min={args.lr * 0.01:.1e})"
+        else:
+            # ReduceLROnPlateau for adaptive optimizers
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                opt, mode='max', factor=0.5, patience=5, min_lr=1e-6, verbose=False)
+            scheduler_name = f"ReduceLROnPlateau(factor=0.5, patience=5, min_lr=1e-6)"
+    else:
+        scheduler = None
+        scheduler_name = "None"
 
     # Mixed precision scaler
     scaler = GradScaler() if (args.mixed_precision and device == "cuda") else None
@@ -246,7 +275,8 @@ def main():
         f"Starting training with {len(train_ds)} training samples, {len(val_ds)} validation samples")
     print(
         f"Model: {model.__class__.__name__}(input_size={X_train.shape[2]}, hidden_size={args.hidden}, num_layers={args.num_layers}, dropout={args.dropout}, bidirectional={args.bidirectional})")
-    print(f"Optimizer: Adam(lr={args.lr}, weight_decay={args.weight_decay})")
+    print(f"Optimizer: {optimizer_name}")
+    print(f"Scheduler: {scheduler_name}")
     print(
         f"Early stopping patience: {args.patience} epochs (min_delta={args.min_delta})")
     print("-" * 80)
@@ -331,7 +361,12 @@ def main():
 
         # Learning rate scheduling
         if args.lr_schedule:
-            scheduler.step(val_acc)
+            if args.optimizer in ["sgd", "rmsprop"]:
+                # CosineAnnealingWarmRestarts steps every epoch
+                scheduler.step()
+            else:
+                # ReduceLROnPlateau uses validation accuracy
+                scheduler.step(val_acc)
 
         # Track history
         training_history.append({
@@ -419,7 +454,8 @@ def plot_training_curves(training_history, out_dir):
     # Loss curves
     ax1.plot(epochs, train_losses, 'b-', label='Training Loss', linewidth=2)
     ax1.plot(epochs, val_losses, 'r-', label='Validation Loss', linewidth=2)
-    ax1.set_title('Training vs Validation Loss', fontsize=14, fontweight='bold')
+    ax1.set_title('Training vs Validation Loss',
+                  fontsize=14, fontweight='bold')
     ax1.set_xlabel('Epoch', fontsize=12)
     ax1.set_ylabel('Loss', fontsize=12)
     ax1.legend(fontsize=11)
@@ -431,13 +467,15 @@ def plot_training_curves(training_history, out_dir):
         recent_train = train_losses[-10:]
         recent_val = val_losses[-10:]
         if recent_val[-1] > recent_val[0] and recent_train[-1] < recent_train[0]:
-            ax1.axvspan(len(epochs)-10, len(epochs), alpha=0.2, color='red', label='Potential Overfitting')
+            ax1.axvspan(len(epochs)-10, len(epochs), alpha=0.2,
+                        color='red', label='Potential Overfitting')
             ax1.legend(fontsize=11)
 
     # Accuracy curves
     ax2.plot(epochs, train_accs, 'b-', label='Training Accuracy', linewidth=2)
     ax2.plot(epochs, val_accs, 'r-', label='Validation Accuracy', linewidth=2)
-    ax2.set_title('Training vs Validation Accuracy', fontsize=14, fontweight='bold')
+    ax2.set_title('Training vs Validation Accuracy',
+                  fontsize=14, fontweight='bold')
     ax2.set_xlabel('Epoch', fontsize=12)
     ax2.set_ylabel('Accuracy', fontsize=12)
     ax2.legend(fontsize=11)
@@ -448,7 +486,8 @@ def plot_training_curves(training_history, out_dir):
         recent_train_acc = train_accs[-10:]
         recent_val_acc = val_accs[-10:]
         if recent_val_acc[-1] < recent_val_acc[0] and recent_train_acc[-1] > recent_train_acc[0]:
-            ax2.axvspan(len(epochs)-10, len(epochs), alpha=0.2, color='red', label='Potential Overfitting')
+            ax2.axvspan(len(epochs)-10, len(epochs), alpha=0.2,
+                        color='red', label='Potential Overfitting')
             ax2.legend(fontsize=11)
 
     plt.tight_layout()
@@ -478,7 +517,8 @@ def plot_training_curves(training_history, out_dir):
     if loss_gap > 0.1:
         print("⚠️  WARNING: Large loss gap suggests potential overfitting!")
     elif loss_gap < -0.1:
-        print("⚠️  WARNING: Validation loss lower than training loss - possible underfitting!")
+        print(
+            "⚠️  WARNING: Validation loss lower than training loss - possible underfitting!")
 
     if acc_gap > 0.1:
         print("⚠️  WARNING: Large accuracy gap suggests potential overfitting!")
