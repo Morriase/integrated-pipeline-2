@@ -11,6 +11,12 @@ This repository contains a comprehensive, production-ready LSTM neural network f
 - **MT5 Integration**: Real-time forex data from MetaTrader 5 across multiple timeframes
 - **Comprehensive Training**: Early stopping, learning rate scheduling, L2 regularization, gradient clipping
 - **Production Ready**: Checkpointing, evaluation metrics, confusion matrices, and deployment tools
+- **🎯 Advanced Trading Features**:
+  - **Trend Alignment**: Only trade when current timeframe trend aligns with higher timeframes
+  - **Walk-Forward Validation**: Time-aware cross-validation simulating real trading conditions
+  - **Triple Barrier Method**: Realistic labeling with profit targets, stop losses, and time limits
+  - **Trend Filtering**: ADX-based trend strength filtering for higher-probability signals
+  - **Quality Scoring**: Multi-factor signal quality assessment with fuzzy logic
 
 ## 📁 Project Structure
 
@@ -93,6 +99,60 @@ Classification → Dense(32) → ReLU → Dropout(0.1) → Dense(3)
 
 ### **Model Capacity**: ~1.3M parameters for complex SMC pattern recognition
 
+## 🎯 Advanced Trading Features
+
+### **Trend Alignment & Multi-Timeframe Analysis**
+- **Higher Timeframe Confirmation**: Only generate signals when H1 trend aligns with H4/D1 trends
+- **ADX Trend Strength**: Minimum ADX threshold (default 20) ensures strong, established trends
+- **Cross-Timeframe Validation**: Prevents counter-trend trades that characterize most retail traders
+
+### **Triple Barrier Method**
+- **Realistic Trade Labeling**: Uses profit targets, stop losses, and time limits instead of simple buy/sell
+- **ATR-Based Barriers**: Dynamic risk management based on market volatility
+- **Outcome-Based Learning**: Model learns from actual trade outcomes, not arbitrary price movements
+
+### **Walk-Forward Validation**
+- **Time-Aware CV**: Simulates real trading by training on past data, validating on future periods
+- **Multiple Splits**: Rolling window validation prevents overfitting to specific market conditions
+- **Out-of-Sample Testing**: Ensures model performance in unseen market conditions
+
+### **Advanced Signal Quality**
+- **Multi-Factor Scoring**: Combines displacement, volume, patterns, volatility, and recency
+- **Fuzzy Logic Integration**: Sophisticated quality assessment using scikit-fuzzy
+- **Quality Threshold Filtering**: Only train on high-confidence signals (configurable threshold)
+
+### **Enhanced SMC Logic**
+- **Mitigation-Required Signals**: Only trade after Order Block mitigation with candlestick confirmation
+- **Pattern Confirmation**: Additional bullish/bearish pattern validation before signal generation
+- **Quality Boost**: Signals meeting multiple criteria receive higher quality scores
+
+## 🎯 Advanced Trading Features
+
+### **Trend Alignment & Multi-Timeframe Analysis**
+- **Higher Timeframe Confirmation**: Only generate signals when H1 trend aligns with H4/D1 trends
+- **ADX Trend Strength**: Minimum ADX threshold (default 20) ensures strong, established trends
+- **Cross-Timeframe Validation**: Prevents counter-trend trades that characterize most retail traders
+
+### **Triple Barrier Method**
+- **Realistic Trade Labeling**: Uses profit targets, stop losses, and time limits instead of simple buy/sell
+- **ATR-Based Barriers**: Dynamic risk management based on market volatility
+- **Outcome-Based Learning**: Model learns from actual trade outcomes, not arbitrary price movements
+
+### **Walk-Forward Validation**
+- **Time-Aware CV**: Simulates real trading by training on past data, validating on future periods
+- **Multiple Splits**: Rolling window validation prevents overfitting to specific market conditions
+- **Out-of-Sample Testing**: Ensures model performance in unseen market conditions
+
+### **Advanced Signal Quality**
+- **Multi-Factor Scoring**: Combines displacement, volume, patterns, volatility, and recency
+- **Fuzzy Logic Integration**: Sophisticated quality assessment using scikit-fuzzy
+- **Quality Threshold Filtering**: Only train on high-confidence signals (configurable threshold)
+
+### **Enhanced SMC Logic**
+- **Mitigation-Required Signals**: Only trade after Order Block mitigation with candlestick confirmation
+- **Pattern Confirmation**: Additional bullish/bearish pattern validation before signal generation
+- **Quality Boost**: Signals meeting multiple criteria receive higher quality scores
+
 ## ⚡ CUDA-Optimized Training
 
 ### **Performance Features**
@@ -145,6 +205,18 @@ python -m forex_lstm.train --device cpu --no-bidirectional
 # Custom dataset and timeframe
 python -m forex_lstm.train --ticker EURUSD --timeframe H4 --bars 5000
 
+# 🎯 Advanced Training with Trend Alignment & Triple Barrier Method
+python -m forex_lstm.train --trend-filter --triple-barrier --min-adx 25 --quality-threshold 0.8
+
+# Walk-Forward Validation for realistic evaluation
+python -m forex_lstm.train --walk-forward --trend-filter --triple-barrier
+
+# High-quality signals only (stricter filtering)
+python -m forex_lstm.train --quality-threshold 0.9 --min-adx 30 --trend-filter --triple-barrier
+
+# Balanced configuration (recommended for production)
+python -m forex_lstm.train --optimizer adamw --lr 0.0005 --trend-filter --triple-barrier --quality-threshold 0.7
+
 # Disable bidirectional for faster training
 python -m forex_lstm.train --no-bidirectional --num-layers 3
 
@@ -156,17 +228,23 @@ python -m forex_lstm.train --optimizer rmsprop --momentum 0.9 --lr 0.001
 
 ## 📊 SMC Strategy Implementation
 
-### **Smart Money Concepts Features**
-- **Order Blocks**: Bullish/bearish order block detection with volume validation
-- **Fair Value Gaps**: Imbalance detection with gap-filling probability
+### **Advanced Smart Money Concepts**
+- **Order Blocks**: Institutional order clustering with displacement validation
+- **Fair Value Gaps**: Liquidity imbalances with ATR-normalized depth measurement
 - **Break of Structure**: Trend change identification with momentum confirmation
-- **ATR Normalization**: Volatility-adjusted feature scaling
-- **Multi-Timeframe Analysis**: Cross-timeframe signal confirmation
+- **ATR Normalization**: Volatility-adjusted measurements for all SMC indicators
 
-### **Label Generation**
-- **Buy Signal**: Break above order block + FVG fill confirmation
-- **Sell Signal**: Break below order block + FVG fill confirmation
-- **Hold Signal**: No clear SMC setup or conflicting signals
+### **🚫 Mitigation-Required Signals**
+- **No Premature Entries**: Only generates signals AFTER order block mitigation
+- **Price Rejection Confirmation**: Waits for price to enter OB then get rejected
+- **Candlestick Pattern Validation**: Pin bars, engulfing patterns boost signal quality
+- **Multi-Factor Quality Scoring**: 0-1 quality score based on displacement, volume, patterns, volatility, recency
+
+### **Label Generation Logic**
+- **Bullish Signal**: OB mitigation + upward rejection + pattern confirmation
+- **Bearish Signal**: OB mitigation + downward rejection + pattern confirmation
+- **Quality Threshold**: Only signals above 0.5 quality score are generated
+- **Hold Signal**: No valid SMC setup or failed mitigation
 
 ## 🔧 Data Pipeline
 
@@ -226,6 +304,7 @@ python -m forex_lstm.evaluate --checkpoint checkpoints/best_model.pt --plot-conf
 - Python 3.8+
 - MetaTrader 5 (for data download)
 - PyTorch 1.13+ with CUDA support (recommended)
+- scikit-fuzzy (for advanced pattern recognition)
 - 8GB+ RAM, NVIDIA GPU recommended for training
 
 ## 🔄 Next Steps & Improvements

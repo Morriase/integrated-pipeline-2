@@ -53,6 +53,13 @@ def detect_swings(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     return df
 
 
+def add_candlestick_colors(df: pd.DataFrame) -> pd.DataFrame:
+    """Add candlestick color column (1 for bullish, -1 for bearish)."""
+    df = df.copy()
+    df['color'] = np.where(df['Close'] > df['Open'], 1, -1)
+    return df
+
+
 def identify_order_blocks(df: pd.DataFrame, atr: pd.Series, displacement_threshold: float = 1.0) -> pd.DataFrame:
     """Identify Order Blocks with displacement validation."""
     df = df.copy()
@@ -234,6 +241,9 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Add SMC features as columns to the dataframe."""
     df = df.copy()
+
+    # Add candlestick colors first (required for order block detection)
+    df = add_candlestick_colors(df)
 
     # Compute ATR first
     atr = compute_atr(df)

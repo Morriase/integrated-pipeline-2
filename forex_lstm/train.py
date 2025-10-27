@@ -3,6 +3,7 @@ import os
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler, autocast
@@ -11,7 +12,9 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
-from .data import download_ticker, load_csv, prepare_ohlc_series, scale_series, save_scaler, generate_smc_labels, initialize_mt5
+from .data import (download_ticker, load_csv, prepare_ohlc_series, scale_series, save_scaler,
+                   generate_smc_labels, generate_enhanced_smc_labels, initialize_mt5,
+                   evaluate_walk_forward, detect_trend_direction, calculate_adx)
 from .model import LSTMClassifier
 from .utils import create_sequences, SequenceDataset
 
@@ -102,6 +105,16 @@ def main():
                         help="Use mixed precision training (FP16)")
     parser.add_argument("--gpu-memory-fraction", type=float, default=0.8,
                         help="GPU memory fraction to use (0.0-1.0)")
+    parser.add_argument("--walk-forward", action="store_true", default=False,
+                        help="Use Walk-Forward Validation instead of traditional train/val split")
+    parser.add_argument("--trend-filter", action="store_true", default=True,
+                        help="Apply trend alignment filtering to signals")
+    parser.add_argument("--triple-barrier", action="store_true", default=True,
+                        help="Use Triple Barrier Method for signal validation")
+    parser.add_argument("--min-adx", type=float, default=20.0,
+                        help="Minimum ADX threshold for trend strength filtering")
+    parser.add_argument("--quality-threshold", type=float, default=0.7,
+                        help="Minimum quality score threshold for signals (0.0-1.0)")
     args = parser.parse_args()
 
     # CUDA optimizations
@@ -128,6 +141,10 @@ def main():
         print("Using CPU for training")
 
     os.makedirs(args.out_dir, exist_ok=True)
+
+    # Choose training method based on arguments
+    if args.walk_forward:
+        return train_with_walk_forward_validation(args)
 
     # Load data - smart defaults for prepared datasets
     dataset_paths = [
@@ -179,11 +196,50 @@ def main():
         all_labels = df['label'].values
         labels = all_labels[args.seq_len:]  # Skip first seq_len labels
         labels = labels[:len(seqs)]  # Ensure same length as sequences
-    else:
-        print("Generating SMC-based labels")
-        labels = generate_smc_labels(series, args.seq_len)
 
-    # Train / test split
+        # Apply quality filtering if quality scores are available
+        if 'quality_score' in df.columns and args.quality_threshold > 0:
+            quality_scores = df['quality_score'].values[args.seq_len:len(
+                seqs)+args.seq_len]
+            quality_mask = quality_scores >= args.quality_threshold
+            print(f"Applying quality threshold {args.quality_threshold}: "
+                  f"{np.sum(quality_mask)}/{len(quality_mask)} signals retained")
+            # Filter sequences and labels
+            seqs = seqs[quality_mask]
+            labels = labels[quality_mask]
+    else:
+        # Generate enhanced SMC labels with trend filtering and triple barrier method
+        if args.trend_filter or args.triple_barrier:
+            print(
+                "🎯 Generating enhanced SMC labels with trend filtering and triple barrier method...")
+            labels, quality_scores = generate_enhanced_smc_labels(
+                series, args.seq_len,
+                use_trend_filter=args.trend_filter,
+                use_triple_barrier=args.triple_barrier,
+                min_adx=args.min_adx
+            )
+        else:
+            print("Generating SMC-based labels with mitigation and quality scoring")
+            labels, quality_scores = generate_smc_labels(series, args.seq_len)
+
+        print(
+            f"Generated {np.sum(labels > 0)} trading signals with average quality score: {quality_scores.mean():.3f}")
+
+        # Apply quality threshold filtering
+        if args.quality_threshold > 0:
+            quality_mask = quality_scores >= args.quality_threshold
+            seqs = seqs[quality_mask]
+            labels = labels[quality_mask]
+            print(
+                f"After quality filtering ({args.quality_threshold}): {len(labels)} signals retained")
+
+    # Use Walk-Forward Validation if requested
+    if args.walk_forward:
+        print("🔄 Using Walk-Forward Validation")
+        return train_with_walk_forward_validation(args)
+
+    # Traditional train / test split
+    print("📊 Using traditional train/validation split")
     split = int(0.8 * len(seqs))
     X_train, X_val = seqs[:split], seqs[split:]
     y_train, y_val = labels[:split], labels[split:]
@@ -229,10 +285,12 @@ def main():
 
     # Enhanced optimizer selection with momentum options
     if args.optimizer == "adam":
-        opt = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        opt = torch.optim.Adam(
+            model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         optimizer_name = f"Adam(lr={args.lr}, weight_decay={args.weight_decay})"
     elif args.optimizer == "adamw":
-        opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        opt = torch.optim.AdamW(
+            model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         optimizer_name = f"AdamW(lr={args.lr}, weight_decay={args.weight_decay})"
     elif args.optimizer == "sgd":
         opt = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
@@ -524,6 +582,89 @@ def plot_training_curves(training_history, out_dir):
         print("⚠️  WARNING: Large accuracy gap suggests potential overfitting!")
     elif acc_gap < -0.1:
         print("⚠️  WARNING: Validation accuracy much lower - possible underfitting!")
+
+
+def train_with_walk_forward_validation(args):
+    """Train model using Walk-Forward Validation for time series."""
+    print("🚀 Starting Walk-Forward Validation Training")
+    print("=" * 50)
+
+    # Load and prepare data
+    print(f"📊 Loading data from {args.input}")
+    df = load_csv(args.input)
+    df = prepare_ohlc_series(df)
+
+    # Add technical indicators
+    from .data import compute_technical_indicators
+    df = compute_technical_indicators(df)
+
+    # Generate enhanced labels with trend filtering and triple barrier
+    print("🎯 Generating enhanced SMC labels with trend filtering and triple barrier method...")
+    labels, quality_scores = generate_enhanced_smc_labels(
+        df,
+        seq_len=args.seq_len,
+        use_trend_filter=True,
+        use_triple_barrier=True,
+        min_adx=20
+    )
+
+    # Create feature matrix
+    feature_cols = [col for col in df.columns if col not in [
+        'Open', 'High', 'Low', 'Close', 'Volume']]
+    features = df[feature_cols].iloc[args.seq_len:]
+
+    print(f"📈 Features shape: {features.shape}")
+    print(f"🏷️  Labels shape: {labels.shape}")
+    print(f"⭐ Quality scores shape: {quality_scores.shape}")
+
+    # Filter for high-quality signals only
+    quality_threshold = 0.7
+    high_quality_mask = quality_scores > quality_threshold
+    features_filtered = features[high_quality_mask]
+    labels_filtered = labels[high_quality_mask]
+
+    print(f"🎯 High-quality signals: {len(labels_filtered)}/{len(labels)} "
+          f"({len(labels_filtered)/len(labels)*100:.1f}%)")
+
+    if len(labels_filtered) < 1000:
+        print("⚠️  WARNING: Very few high-quality signals found. Consider lowering quality threshold.")
+        return
+
+    # Perform Walk-Forward Validation
+    print("🔄 Running Walk-Forward Validation...")
+    wf_metrics = evaluate_walk_forward(
+        LSTMClassifier,
+        features_filtered,
+        pd.Series(labels_filtered),
+        n_splits=5,
+        seq_len=args.seq_len,
+        input_size=features_filtered.shape[1],
+        hidden_size=args.hidden_size,
+        num_layers=args.num_layers,
+        output_size=len(np.unique(labels_filtered)),
+        dropout=args.dropout
+    )
+
+    print("\n📊 Walk-Forward Validation Results:")
+    print("=" * 40)
+    print(
+        f"Mean Accuracy: {wf_metrics['mean_accuracy']:.4f} ± {wf_metrics['std_accuracy']:.4f}")
+    print(
+        f"Mean F1 Score: {wf_metrics['mean_f1']:.4f} ± {wf_metrics['std_f1']:.4f}")
+
+    print("\n📋 Per-Split Performance:")
+    for i, split in enumerate(wf_metrics['split_metrics']):
+        print(f"Split {i+1}: Acc={split['accuracy']:.4f}, F1={split['f1']:.4f}, "
+              f"Prec={split['precision']:.4f}, Rec={split['recall']:.4f}")
+
+    # Save results
+    results_file = f"walk_forward_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    import json
+    with open(results_file, 'w') as f:
+        json.dump(wf_metrics, f, indent=2)
+    print(f"\n💾 Results saved to {results_file}")
+
+    return wf_metrics
 
 
 if __name__ == '__main__':
