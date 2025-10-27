@@ -903,7 +903,11 @@ def detect_trend_direction(df: pd.DataFrame, period: int = 20) -> pd.Series:
             else:
                 y = series.iloc[i-window+1:i+1].values
                 x = np.arange(window)
-                slope = np.polyfit(x, y, 1)[0]
+                try:
+                    slope = np.polyfit(x, y, 1)[0]
+                except np.linalg.LinAlgError:
+                    # Handle cases where SVD doesn't converge (constant values, etc.)
+                    slope = 0
                 slopes.append(slope)
         return pd.Series(slopes, index=series.index)
 
