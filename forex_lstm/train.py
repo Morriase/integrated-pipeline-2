@@ -205,7 +205,8 @@ def main():
                 raise FileNotFoundError(f"Dataset not found: {args.ticker}")
         else:
             if not MT5_AVAILABLE:
-                raise RuntimeError(f"No prepared datasets found and MetaTrader5 not available. Please prepare your dataset first using consolidate_data.py and create_smc_training_dataset.py")
+                raise RuntimeError(
+                    f"No prepared datasets found and MetaTrader5 not available. Please prepare your dataset first using consolidate_data.py and create_smc_training_dataset.py")
             print(
                 f"No prepared datasets found. Downloading {args.ticker} from MT5...")
             initialize_mt5()

@@ -34,7 +34,8 @@ def download_ticker(symbol: str, timeframe=None, bars: int = 10000, save_path: s
     For forex, common symbols are 'EURUSD', 'GBPUSD', etc.
     """
     if not MT5_AVAILABLE:
-        raise RuntimeError("MetaTrader5 not available on this system - cannot download live data")
+        raise RuntimeError(
+            "MetaTrader5 not available on this system - cannot download live data")
 
     # Set default timeframe if MT5 is available
     if timeframe is None:
@@ -70,7 +71,8 @@ def download_ticker(symbol: str, timeframe=None, bars: int = 10000, save_path: s
 def download_multi_timeframe(symbol: str, bars: int = 10000) -> pd.DataFrame:
     """Download OHLCV data for multiple timeframes: M15, H1, H4."""
     if not MT5_AVAILABLE:
-        raise RuntimeError("MetaTrader5 not available on this system - cannot download live data")
+        raise RuntimeError(
+            "MetaTrader5 not available on this system - cannot download live data")
 
     timeframes = [
         (mt5.TIMEFRAME_M15, 'M15'),
