@@ -419,6 +419,8 @@ def create_lstm_training_dataset(input_file: str = "consolidated_dataset.csv",
     final_df = final_df[existing_cols + ['symbol', 'timeframe', 'label']]
 
     print(f"Saving dataset to {output_file}...")
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     final_df.to_csv(output_file)
 
     print("\nDataset Summary:")
@@ -441,9 +443,9 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Create SMC-based LSTM training dataset")
-    parser.add_argument("--input", type=str, default="consolidated_dataset.csv",
+    parser.add_argument("--input", type=str, default="/kaggle/working/training_data/consolidated_dataset.csv",
                         help="Input consolidated CSV file")
-    parser.add_argument("--output", type=str, default="smc_lstm_training_dataset.csv",
+    parser.add_argument("--output", type=str, default="/kaggle/working/training_data/smc_lstm_training_dataset.csv",
                         help="Output training dataset CSV file")
 
     args = parser.parse_args()

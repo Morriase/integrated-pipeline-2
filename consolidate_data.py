@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 
 
-def load_all_data(data_dir: str = "DATA") -> pd.DataFrame:
+def load_all_data(data_dir: str = "/kaggle/input/pipeline2/DATA") -> pd.DataFrame:
     """Load all CSV files from data directory and consolidate."""
     data_dir = Path(data_dir)
     if not data_dir.exists():
@@ -135,9 +135,9 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="Consolidate MT5 data into single dataset")
-    parser.add_argument("--data-dir", type=str, default="DATA",
+    parser.add_argument("--data-dir", type=str, default="/kaggle/input/pipeline2/DATA",
                         help="Directory containing CSV files")
-    parser.add_argument("--output", type=str, default="consolidated_dataset.csv",
+    parser.add_argument("--output", type=str, default="/kaggle/working/training_data/consolidated_dataset.csv",
                         help="Output CSV file path")
     parser.add_argument("--wide-format", action="store_true",
                         help="Create wide format with features for each symbol/timeframe")
@@ -157,6 +157,8 @@ def main():
         print(f"Columns: {list(df.columns[:10])}...")  # Show first 10 columns
 
     print(f"Saving consolidated dataset to {args.output}...")
+    # Create output directory if it doesn't exist
+    os.makedirs(os.path.dirname(args.output), exist_ok=True)
     df.to_csv(args.output)
     print(f"Dataset saved! Shape: {df.shape}")
     print(f"Date range: {df.index.min()} to {df.index.max()}")

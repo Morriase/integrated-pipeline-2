@@ -97,7 +97,7 @@ def main():
                         help="Minimum change to qualify as an improvement")
     parser.add_argument("--lr-schedule", action="store_true", default=True,
                         help="Use learning rate scheduler")
-    parser.add_argument("--out-dir", type=str, default="checkpoints",
+    parser.add_argument("--out-dir", type=str, default="/kaggle/working/LSTM_Model_Output",
                         help="Output directory for checkpoints")
     parser.add_argument("--device", type=str, default="auto",
                         help="Device to use (cuda/cpu/auto)")
