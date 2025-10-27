@@ -76,10 +76,12 @@ def main():
                         help="L2 regularization weight decay")
     parser.add_argument("--hidden", type=int, default=128,
                         help="LSTM hidden size")
-    parser.add_argument("--num-layers", type=int, default=2,
+    parser.add_argument("--num-layers", type=int, default=4,
                         help="Number of LSTM layers")
     parser.add_argument("--dropout", type=float, default=0.2,
                         help="Dropout rate")
+    parser.add_argument("--bidirectional", action="store_true", default=True,
+                        help="Use bidirectional LSTM")
     parser.add_argument("--patience", type=int, default=15,
                         help="Early stopping patience (epochs)")
     parser.add_argument("--min-delta", type=float, default=1e-4,
@@ -208,7 +210,8 @@ def main():
         input_size=X_train.shape[2],
         hidden_size=args.hidden,
         num_layers=args.num_layers,
-        dropout=args.dropout).to(device)
+        dropout=args.dropout,
+        bidirectional=args.bidirectional).to(device)
 
     # Move model to CUDA with optimizations
     if device == "cuda":
@@ -242,7 +245,7 @@ def main():
     print(
         f"Starting training with {len(train_ds)} training samples, {len(val_ds)} validation samples")
     print(
-        f"Model: {model.__class__.__name__}(input_size={X_train.shape[2]}, hidden_size={args.hidden}, num_layers={args.num_layers}, dropout={args.dropout})")
+        f"Model: {model.__class__.__name__}(input_size={X_train.shape[2]}, hidden_size={args.hidden}, num_layers={args.num_layers}, dropout={args.dropout}, bidirectional={args.bidirectional})")
     print(f"Optimizer: Adam(lr={args.lr}, weight_decay={args.weight_decay})")
     print(
         f"Early stopping patience: {args.patience} epochs (min_delta={args.min_delta})")
