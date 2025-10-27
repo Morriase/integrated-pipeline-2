@@ -9,6 +9,7 @@ and other SMC indicators, then generates trading labels.
 Output: A complete CSV dataset with all features and labels for LSTM training.
 """
 
+from forex_lstm import data as forex_data
 import os
 import pandas as pd
 import numpy as np
@@ -23,7 +24,6 @@ if os.path.exists('/kaggle/working'):
     os.chdir('/kaggle/working')
 
 # Import SMC functions from the main data module
-from forex_lstm import data as forex_data
 
 
 def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -312,7 +312,8 @@ def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def generate_smc_labels(df: pd.DataFrame, seq_len: int = 60) -> Tuple[pd.Series, pd.Series]:
     """Generate enhanced SMC labels with mitigation and quality scoring."""
     # Use the enhanced SMC labeling from the main data module
-    labels, quality_scores = forex_data.generate_enhanced_smc_labels(df, seq_len)
+    labels, quality_scores = forex_data.generate_enhanced_smc_labels(
+        df, seq_len)
 
     # Convert back to pandas Series with proper indexing
     labels_series = pd.Series(labels, index=df.index[seq_len:], name='label')

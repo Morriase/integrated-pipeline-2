@@ -154,8 +154,10 @@ def main():
 
     # Load data - smart defaults for prepared datasets
     dataset_paths = [
-        "/kaggle/working/training_data/smc_lstm_training_dataset.csv",  # Preferred: SMC-enhanced dataset
-        "/kaggle/working/training_data/consolidated_dataset.csv"        # Fallback: basic consolidated dataset
+        # Preferred: SMC-enhanced dataset
+        "/kaggle/working/training_data/smc_lstm_training_dataset.csv",
+        # Fallback: basic consolidated dataset
+        "/kaggle/working/training_data/consolidated_dataset.csv"
     ]
 
     dataset_found = False
