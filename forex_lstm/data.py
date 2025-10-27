@@ -288,7 +288,8 @@ def fuzzy_ob_quality_score(ob: pd.Series, df: pd.DataFrame, patterns: pd.DataFra
         final_score = (
             displacement_score * 0.25 +   # Displacement importance (reduced)
             volume_score * 0.15 +         # Volume confirmation (reduced)
-            pattern_quality_score * 0.35 + # Enhanced pattern quality (increased)
+            # Enhanced pattern quality (increased)
+            pattern_quality_score * 0.35 +
             volatility_score * 0.15 +     # Market context
             recency_score * 0.10          # Recency preference
         )
@@ -306,17 +307,21 @@ def calculate_pattern_quality_score(pattern_row: pd.Series, candle_row: pd.Serie
 
     # Pin Bar Quality Assessment
     if ob_type == 'bullish' and pattern_row.get('bullish_pin', False):
-        quality_score = max(quality_score, calculate_pin_quality(candle_row, 'bullish'))
+        quality_score = max(
+            quality_score, calculate_pin_quality(candle_row, 'bullish'))
     elif ob_type == 'bearish' and pattern_row.get('bearish_pin', False):
-        quality_score = max(quality_score, calculate_pin_quality(candle_row, 'bearish'))
+        quality_score = max(
+            quality_score, calculate_pin_quality(candle_row, 'bearish'))
 
     # Engulfing Pattern Quality
     if pattern_row.get('bullish_engulfing', False) or pattern_row.get('bearish_engulfing', False):
-        quality_score = max(quality_score, calculate_engulfing_quality(candle_row, ob_type))
+        quality_score = max(
+            quality_score, calculate_engulfing_quality(candle_row, ob_type))
 
     # Hammer Pattern Quality (if we add hammer detection)
     if pattern_row.get('hammer', False):
-        quality_score = max(quality_score, calculate_hammer_quality(candle_row))
+        quality_score = max(
+            quality_score, calculate_hammer_quality(candle_row))
 
     return quality_score
 
@@ -338,7 +343,8 @@ def calculate_pin_quality(candle: pd.Series, direction: str) -> float:
 
         if direction == 'bullish':
             # Bullish pin: long lower wick, small body, short upper wick
-            lower_wick = open_price - low_price if close_price > open_price else close_price - low_price
+            lower_wick = open_price - \
+                low_price if close_price > open_price else close_price - low_price
             upper_wick = high_price - max(open_price, close_price)
 
             lower_wick_ratio = lower_wick / total_range
@@ -346,7 +352,8 @@ def calculate_pin_quality(candle: pd.Series, direction: str) -> float:
 
             # Fuzzy scoring: lower wick should be > 60%, upper wick < 20%, body < 30%
             lower_wick_score = min(lower_wick_ratio / 0.6, 1.0)  # Ideal: 60%+
-            upper_wick_score = max(0, 1 - (upper_wick_ratio / 0.2))  # Ideal: <20%
+            upper_wick_score = max(
+                0, 1 - (upper_wick_ratio / 0.2))  # Ideal: <20%
             body_score = max(0, 1 - (body_ratio / 0.3))  # Ideal: <30%
 
         else:  # bearish
@@ -359,11 +366,13 @@ def calculate_pin_quality(candle: pd.Series, direction: str) -> float:
 
             # Fuzzy scoring: upper wick should be > 60%, lower wick < 20%, body < 30%
             upper_wick_score = min(upper_wick_ratio / 0.6, 1.0)  # Ideal: 60%+
-            lower_wick_score = max(0, 1 - (lower_wick_ratio / 0.2))  # Ideal: <20%
+            lower_wick_score = max(
+                0, 1 - (lower_wick_ratio / 0.2))  # Ideal: <20%
             body_score = max(0, 1 - (body_ratio / 0.3))  # Ideal: <30%
 
         # Combine scores with weights
-        final_score = (lower_wick_score * 0.4 + upper_wick_score * 0.3 + body_score * 0.3)
+        final_score = (lower_wick_score * 0.4 +
+                       upper_wick_score * 0.3 + body_score * 0.3)
 
         return min(final_score, 1.0)
 
@@ -395,7 +404,8 @@ def calculate_engulfing_quality(candle: pd.Series, ob_type: str) -> float:
         # Direction alignment bonus
         direction_score = 1.0  # Engulfing patterns are inherently directional
 
-        final_score = (body_score * 0.5 + wick_score * 0.3 + direction_score * 0.2)
+        final_score = (body_score * 0.5 + wick_score *
+                       0.3 + direction_score * 0.2)
         return min(final_score, 1.0)
 
     except:
@@ -418,7 +428,8 @@ def calculate_hammer_quality(candle: pd.Series) -> float:
 
         # Fuzzy scoring
         body_score = max(0, 1 - (body_ratio / 0.3))  # Prefer small body (<30%)
-        wick_score = min(lower_wick_ratio / 0.6, 1.0)  # Prefer long lower wick (60%+)
+        # Prefer long lower wick (60%+)
+        wick_score = min(lower_wick_ratio / 0.6, 1.0)
 
         final_score = (body_score * 0.4 + wick_score * 0.6)
         return min(final_score, 1.0)
