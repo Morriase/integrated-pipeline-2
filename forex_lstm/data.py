@@ -1295,3 +1295,46 @@ def evaluate_walk_forward(model_class, data: pd.DataFrame, labels: pd.Series,
     }
 
     return overall_metrics
+
+
+def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute additional technical indicators."""
+    df = df.copy()
+
+    # ATR
+    df['atr'] = compute_atr(df)
+
+    # RSI
+    def compute_rsi(series, period=14):
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+
+    df['rsi'] = compute_rsi(df['Close'])
+
+    # Moving averages
+    df['sma_20'] = df['Close'].rolling(window=20).mean()
+    df['sma_50'] = df['Close'].rolling(window=50).mean()
+    df['ema_20'] = df['Close'].ewm(span=20).mean()
+
+    # MACD
+    ema_12 = df['Close'].ewm(span=12).mean()
+    ema_26 = df['Close'].ewm(span=26).mean()
+    df['macd'] = ema_12 - ema_26
+    df['macd_signal'] = df['macd'].ewm(span=9).mean()
+    df['macd_hist'] = df['macd'] - df['macd_signal']
+
+    # Bollinger Bands
+    sma_20 = df['Close'].rolling(window=20).mean()
+    std_20 = df['Close'].rolling(window=20).std()
+    df['bb_upper'] = sma_20 + (std_20 * 2)
+    df['bb_lower'] = sma_20 - (std_20 * 2)
+    df['bb_middle'] = sma_20
+
+    # Volume indicators (if volume exists)
+    if 'Volume' in df.columns:
+        df['volume_sma'] = df['Volume'].rolling(window=20).mean()
+
+    return df

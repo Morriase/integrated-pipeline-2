@@ -26,20 +26,6 @@ if os.path.exists('/kaggle/working'):
 # Import SMC functions from the main data module
 
 
-def compute_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Compute Average True Range (ATR)."""
-    high = df['High']
-    low = df['Low']
-    close = df['Close']
-    tr = pd.concat([
-        high - low,
-        (high - close.shift(1)).abs(),
-        (low - close.shift(1)).abs()
-    ], axis=1).max(axis=1)
-    atr = tr.rolling(window=period).mean()
-    return atr
-
-
 def detect_swings(df: pd.DataFrame, window: int = 5) -> pd.DataFrame:
     """Detect swing highs and lows."""
     highs = df['High']
@@ -196,49 +182,6 @@ def detect_bos_choch(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute additional technical indicators."""
-    df = df.copy()
-
-    # ATR
-    df['atr'] = compute_atr(df)
-
-    # RSI
-    def compute_rsi(series, period=14):
-        delta = series.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss
-        return 100 - (100 / (1 + rs))
-
-    df['rsi'] = compute_rsi(df['Close'])
-
-    # Moving averages
-    df['sma_20'] = df['Close'].rolling(window=20).mean()
-    df['sma_50'] = df['Close'].rolling(window=50).mean()
-    df['ema_20'] = df['Close'].ewm(span=20).mean()
-
-    # MACD
-    ema_12 = df['Close'].ewm(span=12).mean()
-    ema_26 = df['Close'].ewm(span=26).mean()
-    df['macd'] = ema_12 - ema_26
-    df['macd_signal'] = df['macd'].ewm(span=9).mean()
-    df['macd_hist'] = df['macd'] - df['macd_signal']
-
-    # Bollinger Bands
-    sma_20 = df['Close'].rolling(window=20).mean()
-    std_20 = df['Close'].rolling(window=20).std()
-    df['bb_upper'] = sma_20 + (std_20 * 2)
-    df['bb_lower'] = sma_20 - (std_20 * 2)
-    df['bb_middle'] = sma_20
-
-    # Volume indicators (if volume exists)
-    if 'Volume' in df.columns:
-        df['volume_sma'] = df['Volume'].rolling(window=20).mean()
-
-    return df
-
-
 def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Add SMC features as columns to the dataframe."""
     df = df.copy()
@@ -247,7 +190,7 @@ def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = add_candlestick_colors(df)
 
     # Compute ATR first
-    atr = compute_atr(df)
+    atr = forex_data.compute_atr(df)
 
     # Identify SMC structures
     obs = identify_order_blocks(df, atr)
@@ -340,7 +283,7 @@ def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.Dat
     symbol_data = symbol_data.sort_index()
 
     # Add technical indicators
-    symbol_data = compute_technical_indicators(symbol_data)
+    symbol_data = forex_data.compute_technical_indicators(symbol_data)
 
     # Add SMC features
     symbol_data = add_smc_features_to_dataframe(symbol_data)
