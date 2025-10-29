@@ -619,10 +619,32 @@ def train_with_walk_forward_validation(args):
     print("🚀 Starting Walk-Forward Validation Training")
     print("=" * 50)
 
-    # Load and prepare data
-    print(f"📊 Loading data from {args.input}")
-    df = load_csv(args.input)
-    df = prepare_ohlc_series(df)
+    # Load data - same logic as main function
+    dataset_paths = [
+        # Preferred: SMC-enhanced dataset
+        "/kaggle/working/training_data/smc_lstm_training_dataset.csv",
+        # Fallback: basic consolidated dataset
+        "/kaggle/working/training_data/consolidated_dataset.csv"
+    ]
+
+    dataset_found = False
+    for dataset_path in dataset_paths:
+        if os.path.exists(dataset_path):
+            print(f"📊 Loading prepared dataset: {dataset_path}")
+            df = load_csv(dataset_path)
+            if 'symbol' in df.columns and 'timeframe' in df.columns:
+                print(f"Loaded consolidated data with {len(df)} rows")
+                print(f"Symbols: {df['symbol'].unique()}")
+                print(f"Timeframes: {df['timeframe'].unique()}")
+                if 'label' in df.columns:
+                    print(
+                        f"Label distribution: {df['label'].value_counts().to_dict()}")
+            df = prepare_ohlc_series(df)
+            dataset_found = True
+            break
+
+    if not dataset_found:
+        raise FileNotFoundError("No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
 
     # Add technical indicators
     from .data import compute_technical_indicators
