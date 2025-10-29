@@ -639,7 +639,6 @@ def train_with_walk_forward_validation(args):
                 if 'label' in df.columns:
                     print(
                         f"Label distribution: {df['label'].value_counts().to_dict()}")
-            df = prepare_ohlc_series(df)
             dataset_found = True
             break
 
