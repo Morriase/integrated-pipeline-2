@@ -187,11 +187,11 @@ def detect_bos_choch(df: pd.DataFrame) -> pd.DataFrame:
         prev_hl = df.iloc[i-20:i-10]['Low'].max()
 
         if recent_hh > prev_hh and recent_hl > prev_hl:
-            df.loc[i, 'choch'] = 1
+            df['choch'].iloc[i] = 1
 
         # Bearish ChoCH: lower high and lower low after higher high and higher low
         elif recent_hh < prev_hh and recent_hl < prev_hl:
-            df.loc[i, 'choch'] = -1
+            df['choch'].iloc[i] = -1
 
     return df
 
