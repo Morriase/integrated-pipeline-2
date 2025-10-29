@@ -644,7 +644,8 @@ def train_with_walk_forward_validation(args):
             break
 
     if not dataset_found:
-        raise FileNotFoundError("No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
+        raise FileNotFoundError(
+            "No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
 
     # Add technical indicators
     from .data import compute_technical_indicators
