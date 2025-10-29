@@ -647,31 +647,62 @@ def train_with_walk_forward_validation(args):
         raise FileNotFoundError(
             "No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
 
-    # Add technical indicators
-    from .data import compute_technical_indicators
-    df = compute_technical_indicators(df)
+    # Check if dataset is already processed with SMC features and labels
+    if 'label' in df.columns:
+        print("🎯 Using pre-processed SMC dataset with existing labels...")
+        # Use existing labels and quality scores
+        labels = df['label'].iloc[args.seq_len:].values
+        quality_scores = df.get('quality_score', pd.Series([1.0] * len(labels))).iloc[args.seq_len:].values
+        
+        # Use all SMC and technical features
+        feature_cols = [
+            # OHLCV
+            'Open', 'High', 'Low', 'Close', 'Volume',
+            # Returns
+            'returns', 'log_returns',
+            # Time features
+            'hour', 'day_of_week', 'month',
+            # Technical indicators
+            'atr', 'rsi', 'sma_20', 'sma_50', 'ema_20',
+            'macd', 'macd_signal', 'macd_hist',
+            'bb_upper', 'bb_lower', 'bb_middle',
+            # SMC features
+            'ob_bullish', 'ob_bearish', 'ob_high', 'ob_low', 'ob_displacement_atr',
+            'fvg_bullish', 'fvg_bearish', 'fvg_top', 'fvg_bottom', 'fvg_depth_atr',
+            'bos', 'choch'
+        ]
+        
+        # Filter to existing columns
+        existing_feature_cols = [col for col in feature_cols if col in df.columns]
+        features = df[existing_feature_cols].iloc[args.seq_len:]
+        
+    else:
+        print("🎯 Processing raw data - generating SMC features and labels...")
+        # Add technical indicators
+        from .data import compute_technical_indicators
+        df = compute_technical_indicators(df)
 
-    # Generate enhanced labels with trend filtering and triple barrier
-    print("🎯 Generating enhanced SMC labels with trend filtering and triple barrier method...")
-    labels, quality_scores = generate_enhanced_smc_labels(
-        df,
-        seq_len=args.seq_len,
-        use_trend_filter=True,
-        use_triple_barrier=True,
-        min_adx=20
-    )
+        # Generate enhanced labels with trend filtering and triple barrier
+        print("🎯 Generating enhanced SMC labels with trend filtering and triple barrier method...")
+        labels, quality_scores = generate_enhanced_smc_labels(
+            df,
+            seq_len=args.seq_len,
+            use_trend_filter=True,
+            use_triple_barrier=True,
+            min_adx=20
+        )
 
-    # Create feature matrix
-    feature_cols = [col for col in df.columns if col not in [
-        'Open', 'High', 'Low', 'Close', 'Volume']]
-    features = df[feature_cols].iloc[args.seq_len:]
+        # Create feature matrix
+        feature_cols = [col for col in df.columns if col not in [
+            'Open', 'High', 'Low', 'Close', 'Volume']]
+        features = df[feature_cols].iloc[args.seq_len:]
 
     print(f"📈 Features shape: {features.shape}")
     print(f"🏷️  Labels shape: {labels.shape}")
     print(f"⭐ Quality scores shape: {quality_scores.shape}")
 
     # Filter for high-quality signals only
-    quality_threshold = 0.7
+    quality_threshold = getattr(args, 'quality_threshold', 0.7)
     high_quality_mask = quality_scores > quality_threshold
     features_filtered = features[high_quality_mask]
     labels_filtered = labels[high_quality_mask]
