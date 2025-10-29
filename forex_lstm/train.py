@@ -647,13 +647,23 @@ def train_with_walk_forward_validation(args):
         raise FileNotFoundError(
             "No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
 
+    # Set datetime index if not already set (for SMC dataset)
+    if 'time' in df.columns:
+        df['time'] = pd.to_datetime(df['time'])
+        df = df.set_index('time')
+    elif not isinstance(df.index, pd.DatetimeIndex):
+        # Try to set index from first column if it's datetime-like
+        if pd.api.types.is_datetime64_any_dtype(df.iloc[:, 0]):
+            df = df.set_index(df.columns[0])
+
     # Check if dataset is already processed with SMC features and labels
     if 'label' in df.columns:
         print("🎯 Using pre-processed SMC dataset with existing labels...")
         # Use existing labels and quality scores
         labels = df['label'].iloc[args.seq_len:].values
-        quality_scores = df.get('quality_score', pd.Series([1.0] * len(labels))).iloc[args.seq_len:].values
-        
+        quality_scores = df.get('quality_score', pd.Series(
+            [1.0] * len(labels))).iloc[args.seq_len:].values
+
         # Use all SMC and technical features
         feature_cols = [
             # OHLCV
@@ -671,13 +681,16 @@ def train_with_walk_forward_validation(args):
             'fvg_bullish', 'fvg_bearish', 'fvg_top', 'fvg_bottom', 'fvg_depth_atr',
             'bos', 'choch'
         ]
-        
+
         # Filter to existing columns
-        existing_feature_cols = [col for col in feature_cols if col in df.columns]
+        existing_feature_cols = [
+            col for col in feature_cols if col in df.columns]
         features = df[existing_feature_cols].iloc[args.seq_len:]
-        
+
     else:
         print("🎯 Processing raw data - generating SMC features and labels...")
+        df = prepare_ohlc_series(df)
+
         # Add technical indicators
         from .data import compute_technical_indicators
         df = compute_technical_indicators(df)
