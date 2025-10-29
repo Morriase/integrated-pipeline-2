@@ -647,15 +647,6 @@ def train_with_walk_forward_validation(args):
         raise FileNotFoundError(
             "No suitable training dataset found. Please ensure smc_lstm_training_dataset.csv or consolidated_dataset.csv exists.")
 
-    # Set datetime index if not already set (for SMC dataset)
-    if 'time' in df.columns:
-        df['time'] = pd.to_datetime(df['time'])
-        df = df.set_index('time')
-    elif not isinstance(df.index, pd.DatetimeIndex):
-        # Try to set index from first column if it's datetime-like
-        if pd.api.types.is_datetime64_any_dtype(df.iloc[:, 0]):
-            df = df.set_index(df.columns[0])
-
     # Check if dataset is already processed with SMC features and labels
     if 'label' in df.columns:
         print("🎯 Using pre-processed SMC dataset with existing labels...")

@@ -115,6 +115,9 @@ def load_csv(path: str, date_col: str = None) -> pd.DataFrame:
     if date_col and date_col in df.columns:
         df[date_col] = pd.to_datetime(df[date_col])
         df = df.set_index(date_col)
+    # Try to detect datetime index column (for SMC datasets saved with index)
+    elif len(df.columns) > 0 and pd.api.types.is_datetime64_any_dtype(df.iloc[:, 0]):
+        df = df.set_index(df.columns[0])
     return df
 
 
