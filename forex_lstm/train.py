@@ -32,7 +32,7 @@ from sklearn.preprocessing import MinMaxScaler
 from .data import (download_ticker, load_csv, prepare_ohlc_series, scale_series, save_scaler,
                    generate_smc_labels, generate_enhanced_smc_labels, initialize_mt5,
                    evaluate_walk_forward, detect_trend_direction, calculate_adx)
-from .model import LSTMClassifier
+from .model import LSTMClassifier, FocalLoss
 from .utils import create_sequences, SequenceDataset
 
 
@@ -155,6 +155,10 @@ def main():
                         help="Maximum allowed class weight to prevent extreme imbalance")
     parser.add_argument("--binary-classification", action="store_true", default=False,
                         help="Convert to binary: class 2 (win) vs classes 0,1 (not-win)")
+    parser.add_argument("--focal-loss", action="store_true", default=False,
+                        help="Use Focal Loss instead of CrossEntropy (better for extreme imbalance)")
+    parser.add_argument("--focal-gamma", type=float, default=2.0,
+                        help="Focal loss gamma parameter (higher = more focus on hard examples)")
     args = parser.parse_args()
 
     # CUDA optimizations
@@ -436,26 +440,30 @@ def main():
         print(
             f"   Class {cls}: {count} samples ({100*count/total_samples:.1f}%)")
 
-    if args.no_class_weights:
-        print("   Using uniform class weights (no weighting)")
-        loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
-    else:
+    # Calculate class weights (used by both CE and Focal Loss)
+    class_weights = None
+    if not args.no_class_weights:
         class_weights = total_samples / (len(unique_classes) * class_counts)
-
-        # Cap extreme weights to prevent loss function domination
         class_weights = np.clip(class_weights, 0.1, args.max_class_weight)
-
-        # Normalize weights so they sum to num_classes
-        class_weights = class_weights * \
-            len(unique_classes) / class_weights.sum()
+        class_weights = class_weights * len(unique_classes) / class_weights.sum()
         class_weights_tensor = torch.FloatTensor(class_weights).to(device)
-
+        
         print("   Applied class weights (capped):")
         for cls, weight in zip(unique_classes, class_weights):
             print(f"      Class {cls} → weight: {weight:.3f}")
-
-        loss_fn = nn.CrossEntropyLoss(
-            weight=class_weights_tensor, label_smoothing=0.1)
+    else:
+        print("   Using uniform class weights (no weighting)")
+        class_weights_tensor = None
+    
+    # Select loss function
+    if args.focal_loss:
+        print(f"   Using Focal Loss (gamma={args.focal_gamma}, better for extreme imbalance)")
+        loss_fn = FocalLoss(alpha=class_weights_tensor, gamma=args.focal_gamma)
+    else:
+        if class_weights_tensor is not None:
+            loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor, label_smoothing=0.1)
+        else:
+            loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # Training tracking
     best_val_loss = float('inf')
