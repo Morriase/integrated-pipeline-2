@@ -263,6 +263,18 @@ def main():
             print(
                 f"After quality filtering ({args.quality_threshold}): {len(labels)} signals retained")
 
+    # Ensure labels are suitable for CrossEntropyLoss (non-negative integer classes)
+    if len(labels) == 0:
+        raise ValueError(
+            "No labels available after preprocessing. Check data and quality thresholds.")
+
+    if labels.min() < 0:
+        label_mapping = {-1: 0, 0: 1, 1: 2}
+        labels = np.vectorize(lambda x: label_mapping.get(
+            int(x), int(x)))(labels).astype(int)
+    else:
+        labels = labels.astype(int)
+
     # Use Walk-Forward Validation if requested
     if args.walk_forward:
         print("🔄 Using Walk-Forward Validation")
@@ -651,28 +663,38 @@ def train_with_walk_forward_validation(args):
         print("🎯 Using pre-processed SMC dataset with existing labels...")
         # Use existing labels and quality scores
         labels = df['label'].iloc[args.seq_len:].values
-        quality_scores = df.get('quality_score', pd.Series(
-            [1.0] * len(labels))).iloc[args.seq_len:].values
+        quality_series = df.get('quality_score', pd.Series(
+            [1.0] * len(df))).iloc[args.seq_len:]
+        quality_scores = quality_series.values
+
+        if labels.min() < 0:
+            label_mapping = {-1: 0, 0: 1, 1: 2}
+            labels = np.vectorize(lambda x: label_mapping.get(
+                int(x), int(x)))(labels).astype(int)
+        else:
+            labels = labels.astype(int)
 
         # Use all SMC and technical features
         feature_cols = [
-            # OHLCV
             'Open', 'High', 'Low', 'Close', 'Volume',
-            # Returns
             'returns', 'log_returns',
-            # Time features
             'hour', 'day_of_week', 'month',
-            # Technical indicators
-            'atr', 'rsi', 'sma_20', 'sma_50', 'ema_20',
+            'atr', 'rsi', 'sma_20', 'sma_50', 'ema_20', 'ema_50',
             'macd', 'macd_signal', 'macd_hist',
-            'bb_upper', 'bb_lower', 'bb_middle',
-            # SMC features
+            'bb_upper', 'bb_lower', 'bb_middle', 'volume_sma',
+            'trend_bias_indicator', 'volatility_state',
             'ob_bullish', 'ob_bearish', 'ob_high', 'ob_low', 'ob_displacement_atr',
+            'ob_size_atr', 'ob_displacement_zscore', 'ob_entry_price', 'distance_to_ob_entry_atr',
+            'risk_per_trade_atr',
             'fvg_bullish', 'fvg_bearish', 'fvg_top', 'fvg_bottom', 'fvg_depth_atr',
-            'bos', 'choch'
+            'fvg_depth_zscore', 'fvg_entry_price', 'distance_to_fvg_entry_atr',
+            'bos_bull_wick', 'bos_bull_close', 'bos_bear_wick', 'bos_bear_close',
+            'bos_commitment_flag', 'bos_momentum_atr', 'displacement_mag_zscore',
+            'choch_bull_close', 'choch_bear_close', 'choch_bull_wick', 'choch_bear_wick',
+            'trend_state', 'recent_bull_break', 'recent_bear_break',
+            'signal_direction', 'quality_score', 'trade_return', 'raw_signal_label'
         ]
 
-        # Filter to existing columns
         existing_feature_cols = [
             col for col in feature_cols if col in df.columns]
         features = df[existing_feature_cols].iloc[args.seq_len:]
@@ -694,6 +716,13 @@ def train_with_walk_forward_validation(args):
             use_triple_barrier=True,
             min_adx=20
         )
+
+        if labels.min() < 0:
+            label_mapping = {-1: 0, 0: 1, 1: 2}
+            labels = np.vectorize(lambda x: label_mapping.get(
+                int(x), int(x)))(labels).astype(int)
+        else:
+            labels = labels.astype(int)
 
         # Create feature matrix
         feature_cols = [col for col in df.columns if col not in [

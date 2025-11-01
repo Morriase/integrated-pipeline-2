@@ -1,5 +1,5 @@
 import os
-from typing import Tuple
+from typing import Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,15 @@ except ImportError:
 from sklearn.preprocessing import MinMaxScaler
 
 from .utils import create_sequences
+
+
+def calculate_zscore(series: pd.Series, window: int = 100, min_periods: int = 25) -> pd.Series:
+    """Compute rolling z-score with sensible defaults."""
+    rolling_mean = series.rolling(
+        window=window, min_periods=min_periods).mean()
+    rolling_std = series.rolling(window=window, min_periods=min_periods).std()
+    normalized = (series - rolling_mean) / (rolling_std.replace(0, np.nan))
+    return normalized.fillna(0.0)
 
 
 def initialize_mt5():
@@ -644,7 +653,12 @@ def generate_smc_labels(df: pd.DataFrame, seq_len: int) -> np.ndarray:
 def generate_enhanced_smc_labels(df: pd.DataFrame, seq_len: int = 60,
                                  use_trend_filter: bool = True,
                                  use_triple_barrier: bool = True,
-                                 min_adx: float = 20) -> Tuple[np.ndarray, np.ndarray]:
+                                 min_adx: float = 20,
+                                 return_meta: bool = False) -> Union[
+                                     Tuple[np.ndarray, np.ndarray],
+                                     Tuple[np.ndarray, np.ndarray,
+                                           np.ndarray, np.ndarray, np.ndarray]
+]:
     """Generate enhanced SMC labels with trend alignment and Triple Barrier Method.
 
     Args:
@@ -669,6 +683,9 @@ def generate_enhanced_smc_labels(df: pd.DataFrame, seq_len: int = 60,
 
     labels = np.zeros(len(df), dtype=int)  # 0 hold, 1 buy, 2 sell
     quality_scores = np.zeros(len(df))     # Quality scores for each signal
+    tbm_outcomes = np.zeros(len(df), dtype=int)  # -1 loss, 0 timeout, 1 win
+    trade_returns = np.zeros(len(df))  # Relative return from triple barrier
+    signal_direction = np.zeros(len(df), dtype=int)  # -1 short, 1 long
 
     # Process Order Blocks with enhanced logic
     for _, ob in obs.iterrows():
@@ -706,23 +723,16 @@ def generate_enhanced_smc_labels(df: pd.DataFrame, seq_len: int = 60,
                 direction = 1 if ob['type'] == 'bullish' else -1
                 barrier_result = apply_triple_barrier_method(
                     df, rejection_idx, direction)
-
-                # Only keep signal if it resulted in a win
-                if barrier_result['outcome'] != 1:
-                    continue
-
-                # Adjust quality score based on return
-                quality_score *= (1 + barrier_result['return'])
+                tbm_outcomes[rejection_idx] = barrier_result['outcome']
+                trade_returns[rejection_idx] = barrier_result['return']
+                # Adjust quality score based on realised performance when available
+                quality_score *= max(0.1, 1 + barrier_result['return'])
 
             # Set the signal
-            if ob['type'] == 'bullish':
-                if rejection_idx < len(labels):
-                    labels[rejection_idx] = 1  # buy
-                    quality_scores[rejection_idx] = quality_score
-            elif ob['type'] == 'bearish':
-                if rejection_idx < len(labels):
-                    labels[rejection_idx] = 2  # sell
-                    quality_scores[rejection_idx] = quality_score
+            if rejection_idx < len(labels):
+                signal_direction[rejection_idx] = 1 if ob['type'] == 'bullish' else -1
+                labels[rejection_idx] = 1 if ob['type'] == 'bullish' else 2
+                quality_scores[rejection_idx] = quality_score
 
     # Process FVGs with similar enhanced logic (less strict requirements)
     for _, fvg in fvgs.iterrows():
@@ -755,11 +765,14 @@ def generate_enhanced_smc_labels(df: pd.DataFrame, seq_len: int = 60,
                             if use_triple_barrier:
                                 barrier_result = apply_triple_barrier_method(
                                     df, j, 1)
-                                if barrier_result['outcome'] != 1:
-                                    break
+                                tbm_outcomes[j] = barrier_result['outcome']
+                                trade_returns[j] = barrier_result['return']
+                                quality_score *= max(0.1, 1 +
+                                                     barrier_result['return'])
 
                             labels[j] = 1
                             quality_scores[j] = quality_score
+                            signal_direction[j] = 1
                             break
                     break
 
@@ -778,20 +791,38 @@ def generate_enhanced_smc_labels(df: pd.DataFrame, seq_len: int = 60,
                             if use_triple_barrier:
                                 barrier_result = apply_triple_barrier_method(
                                     df, j, -1)
-                                if barrier_result['outcome'] != 1:
-                                    break
+                                tbm_outcomes[j] = barrier_result['outcome']
+                                trade_returns[j] = barrier_result['return']
+                                quality_score *= max(0.1, 1 +
+                                                     barrier_result['return'])
 
                             labels[j] = 2
                             quality_scores[j] = quality_score
+                            signal_direction[j] = -1
                             break
                     break
 
     # For sequences, the label is the action at the end of the sequence
     seq_labels = []
     seq_qualities = []
+    seq_outcomes = []
+    seq_directions = []
+    seq_returns = []
     for i in range(seq_len, len(labels)):
         seq_labels.append(labels[i])
         seq_qualities.append(quality_scores[i])
+        seq_outcomes.append(tbm_outcomes[i])
+        seq_directions.append(signal_direction[i])
+        seq_returns.append(trade_returns[i])
+
+    if return_meta:
+        return (
+            np.array(seq_labels),
+            np.array(seq_qualities),
+            np.array(seq_outcomes),
+            np.array(seq_directions),
+            np.array(seq_returns)
+        )
 
     return np.array(seq_labels), np.array(seq_qualities)
 
@@ -1321,6 +1352,7 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df['sma_20'] = df['Close'].rolling(window=20).mean()
     df['sma_50'] = df['Close'].rolling(window=50).mean()
     df['ema_20'] = df['Close'].ewm(span=20).mean()
+    df['ema_50'] = df['Close'].ewm(span=50).mean()
 
     # MACD
     ema_12 = df['Close'].ewm(span=12).mean()
@@ -1339,5 +1371,18 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     # Volume indicators (if volume exists)
     if 'Volume' in df.columns:
         df['volume_sma'] = df['Volume'].rolling(window=20).mean()
+
+    # Trend bias indicator (distance to EMA50 normalised by ATR)
+    atr_safe = df['atr'].replace(0, np.nan)
+    df['trend_bias_indicator'] = (
+        (df['Close'] - df['ema_50']) / atr_safe).fillna(0.0)
+
+    # Volatility regime classification based on ATR z-score
+    atr_zscore = calculate_zscore(df['atr'].fillna(0.0))
+    df['volatility_state'] = 0
+    df.loc[atr_zscore > 1.0, 'volatility_state'] = 2  # High volatility
+    df.loc[atr_zscore < -1.0, 'volatility_state'] = 0  # Low volatility
+    mid_mask = (atr_zscore >= -1.0) & (atr_zscore <= 1.0)
+    df.loc[mid_mask, 'volatility_state'] = 1
 
     return df

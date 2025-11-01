@@ -130,56 +130,71 @@ def identify_fvgs(df: pd.DataFrame, atr: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(fvgs)
 
 
-def detect_bos_choch(df: pd.DataFrame) -> pd.DataFrame:
-    """Detect Break of Structure (BOS) and Change of Character (ChoCH)."""
-    df = df.copy()
-    df['bos'] = 0  # 0: no BOS, 1: bullish BOS, -1: bearish BOS
-    df['choch'] = 0  # 0: no ChoCH, 1: bullish ChoCH, -1: bearish ChoCH
+def detect_bos_choch(df: pd.DataFrame, swing_window: int = 5, choch_lookback: int = 20) -> pd.DataFrame:
+    """Detect Break of Structure (BOS) and Change of Character (ChoCH) with confirmation flags."""
+    frame = df.copy()
 
-    # Detect swing points
-    swing_df = detect_swings(df)
+    swing_df = detect_swings(frame, window=swing_window)
+    frame['prev_swing_high'] = np.where(
+        swing_df['swing_high'], frame['High'], np.nan)
+    frame['prev_swing_low'] = np.where(
+        swing_df['swing_low'], frame['Low'], np.nan)
+    frame['prev_swing_high'] = frame['prev_swing_high'].ffill()
+    frame['prev_swing_low'] = frame['prev_swing_low'].ffill()
 
-    swing_highs = swing_df[swing_df['swing_high']].index
-    swing_lows = swing_df[swing_df['swing_low']].index
+    frame['bos_bull_wick'] = ((frame['High'] > frame['prev_swing_high'])
+                              & frame['prev_swing_high'].notna()).astype(int)
+    frame['bos_bull_close'] = ((frame['Close'] > frame['prev_swing_high'])
+                               & frame['prev_swing_high'].notna()).astype(int)
+    frame['bos_bear_wick'] = ((frame['Low'] < frame['prev_swing_low'])
+                              & frame['prev_swing_low'].notna()).astype(int)
+    frame['bos_bear_close'] = (
+        (frame['Close'] < frame['prev_swing_low']) & frame['prev_swing_low'].notna()).astype(int)
 
-    # Bullish BOS: price breaks above previous swing high
-    for i in range(1, len(swing_highs)):
-        prev_high_idx = swing_highs[i-1]
-        curr_high_idx = swing_highs[i]
-        prev_high = df.loc[prev_high_idx, 'High']
+    atr_series = forex_data.compute_atr(frame)
+    atr_safe = atr_series.replace(0, np.nan)
+    frame['bos_momentum_atr'] = 0.0
+    bull_mask = frame['bos_bull_close'] == 1
+    bear_mask = frame['bos_bear_close'] == 1
+    frame.loc[bull_mask, 'bos_momentum_atr'] = (
+        (frame.loc[bull_mask, 'Close'] - frame.loc[bull_mask, 'prev_swing_high']) / atr_safe.loc[bull_mask]).fillna(0.0)
+    frame.loc[bear_mask, 'bos_momentum_atr'] = (
+        (frame.loc[bear_mask, 'prev_swing_low'] - frame.loc[bear_mask, 'Close']) / atr_safe.loc[bear_mask]).fillna(0.0)
 
-        # Check if price breaks above previous swing high
-        break_idx = df.loc[curr_high_idx:, 'High'].gt(prev_high).idxmax()
-        if break_idx > curr_high_idx:
-            df.loc[break_idx, 'bos'] = 1
+    frame['bos_commitment_flag'] = ((frame['bos_bull_close'] == 1) | (
+        frame['bos_bear_close'] == 1)).astype(int)
+    frame['bos'] = frame['bos_bull_close'] - frame['bos_bear_close']
 
-    # Bearish BOS: price breaks below previous swing low
-    for i in range(1, len(swing_lows)):
-        prev_low_idx = swing_lows[i-1]
-        curr_low_idx = swing_lows[i]
-        prev_low = df.loc[prev_low_idx, 'Low']
+    structure_direction = frame['bos'].replace(
+        0, np.nan).ffill().fillna(0).astype(int)
+    frame['trend_state'] = structure_direction
 
-        # Check if price breaks below previous swing low
-        break_idx = df.loc[curr_low_idx:, 'Low'].lt(prev_low).idxmax()
-        if break_idx > curr_low_idx:
-            df.loc[break_idx, 'bos'] = -1
+    prev_direction = structure_direction.shift(1).fillna(0).astype(int)
+    frame['choch_bull_close'] = ((structure_direction == 1) & (
+        prev_direction == -1) & (frame['bos_bull_close'] == 1)).astype(int)
+    frame['choch_bear_close'] = ((structure_direction == -1) & (
+        prev_direction == 1) & (frame['bos_bear_close'] == 1)).astype(int)
 
-    # ChoCH: change in market structure (higher highs/lower lows vs lower highs/higher lows)
-    for i in range(10, len(df)):
-        # Bullish ChoCH: higher high and higher low after lower high and lower low
-        recent_hh = df.iloc[i-10:i]['High'].max()
-        recent_hl = df.iloc[i-10:i]['Low'].max()
-        prev_hh = df.iloc[i-20:i-10]['High'].max()
-        prev_hl = df.iloc[i-20:i-10]['Low'].max()
+    wick_direction = (frame['bos_bull_wick'] - frame['bos_bear_wick']
+                      ).replace(0, np.nan).ffill().fillna(0).astype(int)
+    prev_wick_direction = wick_direction.shift(1).fillna(0)
+    frame['choch_bull_wick'] = ((frame['bos_bull_wick'] == 1) & (
+        prev_wick_direction == -1)).astype(int)
+    frame['choch_bear_wick'] = ((frame['bos_bear_wick'] == 1) & (
+        prev_wick_direction == 1)).astype(int)
 
-        if recent_hh > prev_hh and recent_hl > prev_hl:
-            df['choch'].iloc[i] = 1
+    frame['choch'] = frame['choch_bull_close'] - frame['choch_bear_close']
 
-        # Bearish ChoCH: lower high and lower low after higher high and higher low
-        elif recent_hh < prev_hh and recent_hl < prev_hl:
-            df['choch'].iloc[i] = -1
+    if choch_lookback > 0:
+        frame['recent_bull_break'] = frame['bos_bull_close'].rolling(
+            window=choch_lookback, min_periods=1).max().fillna(0)
+        frame['recent_bear_break'] = frame['bos_bear_close'].rolling(
+            window=choch_lookback, min_periods=1).max().fillna(0)
+    else:
+        frame['recent_bull_break'] = 0
+        frame['recent_bear_break'] = 0
 
-    return df
+    return frame
 
 
 def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -249,21 +264,82 @@ def add_smc_features_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df[['ob_high', 'ob_low', 'fvg_top', 'fvg_bottom']] = df[[
         'ob_high', 'ob_low', 'fvg_top', 'fvg_bottom']].fillna(-1)
 
+    # Volatility-safe denominators
+    atr_series = atr.replace(0, np.nan)
+
+    # Order block size and displacement normalisation
+    df['ob_size_atr'] = 0.0
+    valid_ob = (df['ob_high'] > 0) & (df['ob_low'] > 0) & atr_series.notna()
+    df.loc[valid_ob, 'ob_size_atr'] = ((df.loc[valid_ob, 'ob_high'] - df.loc[valid_ob, 'ob_low']) /
+                                       atr_series.loc[valid_ob]).replace([np.inf, -np.inf], 0).fillna(0)
+
+    df['ob_displacement_zscore'] = forex_data.calculate_zscore(
+        df['ob_displacement_atr'].fillna(0))
+
+    # Fair value gap depth normalisation
+    df['fvg_depth_zscore'] = forex_data.calculate_zscore(
+        df['fvg_depth_atr'].fillna(0))
+
+    # Entry distances in ATR terms
+    ob_entry_price = np.where(df['ob_bullish'] == 1, df['ob_low'],
+                              np.where(df['ob_bearish'] == 1, df['ob_high'], np.nan))
+    ob_entry_price = pd.Series(ob_entry_price, index=df.index).ffill()
+    ob_entry_price[ob_entry_price < 0] = np.nan
+    df['ob_entry_price'] = ob_entry_price
+    df['distance_to_ob_entry_atr'] = (
+        (df['Close'] - ob_entry_price).abs() / atr_series)
+    df['distance_to_ob_entry_atr'] = df['distance_to_ob_entry_atr'].replace(
+        [np.inf, -np.inf], np.nan).fillna(0.0)
+    df['ob_entry_price'] = df['ob_entry_price'].fillna(-1)
+
+    fvg_entry_price = np.where(df['fvg_bullish'] == 1, df['fvg_top'],
+                               np.where(df['fvg_bearish'] == 1, df['fvg_bottom'], np.nan))
+    fvg_entry_price = pd.Series(fvg_entry_price, index=df.index).ffill()
+    fvg_entry_price[fvg_entry_price < 0] = np.nan
+    df['fvg_entry_price'] = fvg_entry_price
+    df['distance_to_fvg_entry_atr'] = (
+        (df['Close'] - fvg_entry_price).abs() / atr_series)
+    df['distance_to_fvg_entry_atr'] = df['distance_to_fvg_entry_atr'].replace(
+        [np.inf, -np.inf], np.nan).fillna(0.0)
+    df['fvg_entry_price'] = df['fvg_entry_price'].fillna(-1)
+
+    # Risk per trade using structural boundaries
+    df['risk_per_trade_atr'] = 0.0
+    bullish_mask = (df['ob_bullish'] == 1) & atr_series.notna()
+    bearish_mask = (df['ob_bearish'] == 1) & atr_series.notna()
+    df.loc[bullish_mask, 'risk_per_trade_atr'] = ((df.loc[bullish_mask, 'ob_entry_price'] - df.loc[bullish_mask, 'ob_low']) /
+                                                  atr_series.loc[bullish_mask]).abs().replace([np.inf, -np.inf], 0).fillna(0)
+    df.loc[bearish_mask, 'risk_per_trade_atr'] = ((df.loc[bearish_mask, 'ob_high'] - df.loc[bearish_mask, 'ob_entry_price']) /
+                                                  atr_series.loc[bearish_mask]).abs().replace([np.inf, -np.inf], 0).fillna(0)
+
+    # Displacement momentum to align with institutional footprint spec
+    df['displacement_mag_zscore'] = forex_data.calculate_zscore(
+        df['bos_momentum_atr'].fillna(0))
+
     return df
 
 
-def generate_smc_labels(df: pd.DataFrame, seq_len: int = 60) -> Tuple[pd.Series, pd.Series]:
-    """Generate enhanced SMC labels with mitigation and quality scoring."""
-    # Use the enhanced SMC labeling from the main data module
-    labels, quality_scores = forex_data.generate_enhanced_smc_labels(
-        df, seq_len)
+def generate_smc_labels(df: pd.DataFrame, seq_len: int = 60) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series, pd.Series]:
+    """Generate enhanced SMC labels, directions, quality scores, and triple barrier outcomes."""
+    (labels,
+     quality_scores,
+     tbm_outcomes,
+     directions,
+     trade_returns) = forex_data.generate_enhanced_smc_labels(
+        df,
+        seq_len=seq_len,
+        return_meta=True)
 
-    # Convert back to pandas Series with proper indexing
-    labels_series = pd.Series(labels, index=df.index[seq_len:], name='label')
+    index = df.index[seq_len:]
+    label_series = pd.Series(labels, index=index, name='raw_label')
     quality_series = pd.Series(
-        quality_scores, index=df.index[seq_len:], name='quality_score')
+        quality_scores, index=index, name='quality_score')
+    outcome_series = pd.Series(tbm_outcomes, index=index, name='tbm_outcome')
+    direction_series = pd.Series(
+        directions, index=index, name='signal_direction')
+    return_series = pd.Series(trade_returns, index=index, name='trade_return')
 
-    return labels_series, quality_series
+    return label_series, quality_series, outcome_series, direction_series, return_series
 
 
 def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.DataFrame:
@@ -282,6 +358,19 @@ def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.Dat
     # Sort by time
     symbol_data = symbol_data.sort_index()
 
+    # Ensure base statistical features exist
+    if 'returns' not in symbol_data.columns:
+        symbol_data['returns'] = symbol_data['Close'].pct_change()
+    if 'log_returns' not in symbol_data.columns:
+        symbol_data['log_returns'] = np.log(
+            symbol_data['Close'] / symbol_data['Close'].shift(1))
+    if 'hour' not in symbol_data.columns:
+        symbol_data['hour'] = symbol_data.index.hour
+    if 'day_of_week' not in symbol_data.columns:
+        symbol_data['day_of_week'] = symbol_data.index.dayofweek
+    if 'month' not in symbol_data.columns:
+        symbol_data['month'] = symbol_data.index.month
+
     # Add technical indicators
     symbol_data = forex_data.compute_technical_indicators(symbol_data)
 
@@ -289,18 +378,62 @@ def process_symbol_data(df: pd.DataFrame, symbol: str, timeframe: str) -> pd.Dat
     symbol_data = add_smc_features_to_dataframe(symbol_data)
 
     # Generate labels with quality scores
-    labels, quality_scores = generate_smc_labels(symbol_data)
+    (raw_labels,
+     quality_scores,
+     tbm_outcomes,
+     signal_directions,
+     trade_returns) = generate_smc_labels(symbol_data)
 
-    # Add to dataframe
-    symbol_data['label'] = labels
-    symbol_data['quality_score'] = quality_scores
+    valid_index = raw_labels.index
+    symbol_data = symbol_data.loc[valid_index].copy()
+
+    symbol_data['raw_signal_label'] = raw_labels.reindex(
+        valid_index).fillna(0).astype(int)
+    symbol_data['quality_score'] = quality_scores.reindex(
+        valid_index).fillna(0.0)
+    symbol_data['signal_direction'] = signal_directions.reindex(
+        valid_index).fillna(0).astype(int)
+    symbol_data['tbm_outcome'] = tbm_outcomes.reindex(
+        valid_index).fillna(0).astype(int)
+    symbol_data['trade_return'] = trade_returns.reindex(
+        valid_index).fillna(0.0)
+
+    # Per specification the TBM outcome is the target label (-1, 0, 1)
+    symbol_data['label'] = symbol_data['tbm_outcome']
 
     # Add symbol/timeframe identifiers
     symbol_data['symbol'] = symbol
     symbol_data['timeframe'] = timeframe
 
+    # Replace remaining NaNs (if any structural columns were empty)
+    numeric_cols = symbol_data.select_dtypes(include=[np.number]).columns
+    symbol_data[numeric_cols] = symbol_data[numeric_cols].fillna(0.0)
+
+    int_columns = [
+        'signal_direction',
+        'tbm_outcome',
+        'label',
+        'raw_signal_label',
+        'volatility_state',
+        'trend_state',
+        'bos_bull_wick',
+        'bos_bull_close',
+        'bos_bear_wick',
+        'bos_bear_close',
+        'bos_commitment_flag',
+        'choch_bull_close',
+        'choch_bear_close',
+        'choch_bull_wick',
+        'choch_bear_wick',
+        'recent_bull_break',
+        'recent_bear_break'
+    ]
+    for col in int_columns:
+        if col in symbol_data.columns:
+            symbol_data[col] = symbol_data[col].astype(int)
+
     print(f"Completed {symbol} {timeframe}: {len(symbol_data)} rows, "
-          f"{symbol_data['label'].value_counts().to_dict()}")
+          f"TBM distribution {symbol_data['label'].value_counts().to_dict()}")
 
     return symbol_data
 
@@ -334,9 +467,6 @@ def create_lstm_training_dataset(input_file: str = "consolidated_dataset.csv",
     # Sort by time
     final_df = final_df.sort_index()
 
-    # Final cleanup
-    final_df = final_df.dropna()  # Remove any remaining NaN values
-
     # Feature columns for LSTM (exclude target and identifiers)
     feature_cols = [
         # OHLCV
@@ -349,14 +479,24 @@ def create_lstm_training_dataset(input_file: str = "consolidated_dataset.csv",
         'hour', 'day_of_week', 'month',
 
         # Technical indicators
-        'atr', 'rsi', 'sma_20', 'sma_50', 'ema_20',
+        'atr', 'rsi', 'sma_20', 'sma_50', 'ema_20', 'ema_50',
         'macd', 'macd_signal', 'macd_hist',
-        'bb_upper', 'bb_lower', 'bb_middle',
+        'bb_upper', 'bb_lower', 'bb_middle', 'volume_sma',
+        'trend_bias_indicator', 'volatility_state',
 
         # SMC features
         'ob_bullish', 'ob_bearish', 'ob_high', 'ob_low', 'ob_displacement_atr',
+        'ob_size_atr', 'ob_displacement_zscore', 'ob_entry_price', 'distance_to_ob_entry_atr',
+        'risk_per_trade_atr',
         'fvg_bullish', 'fvg_bearish', 'fvg_top', 'fvg_bottom', 'fvg_depth_atr',
-        'bos', 'choch'
+        'fvg_depth_zscore', 'fvg_entry_price', 'distance_to_fvg_entry_atr',
+        'bos_bull_wick', 'bos_bull_close', 'bos_bear_wick', 'bos_bear_close',
+        'bos_commitment_flag', 'bos_momentum_atr', 'displacement_mag_zscore',
+        'choch_bull_close', 'choch_bear_close', 'choch_bull_wick', 'choch_bear_wick',
+        'trend_state', 'recent_bull_break', 'recent_bear_break',
+
+        # Signal metadata features
+        'signal_direction', 'quality_score', 'trade_return', 'raw_signal_label'
     ]
 
     # Ensure all feature columns exist
@@ -364,8 +504,10 @@ def create_lstm_training_dataset(input_file: str = "consolidated_dataset.csv",
     final_df = final_df[existing_cols + ['symbol', 'timeframe', 'label']]
 
     print(f"Saving dataset to {output_file}...")
-    # Create output directory if it doesn't exist
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    # Create output directory if it exists in path
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     final_df.to_csv(output_file)
 
     print("\nDataset Summary:")
