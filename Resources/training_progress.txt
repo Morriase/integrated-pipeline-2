@@ -1,0 +1,107 @@
+MetaTrader5 not available - live data download disabled
+MetaTrader5 not available - live data download disabled
+CUDA available: True
+CUDA device: Tesla T4
+CUDA memory: 14.7 GB
+Using GPU memory fraction: 0.8
+Loading prepared dataset: /kaggle/working/training_data/smc_lstm_training_dataset.csv
+Loaded consolidated data with 151684 rows
+Symbols: ['GBPUSD' 'USDCHF' 'EURUSD' 'USDJPY' 'USDCAD' 'AUDUSD']
+Timeframes: ['H4' 'H1' 'M15']
+Label distribution: {0: 139864, -1: 7881, 1: 3939}
+Using pre-computed labels from dataset
+Applying quality threshold 0.7: 259/151624 signals retained
+📊 Using traditional train/validation split
+Using 2 GPUs with DataParallel
+/usr/local/lib/python3.11/dist-packages/torch/optim/lr_scheduler.py:62: UserWarning: The verbose parameter is deprecated. Please use get_last_lr() to access the learning rate.
+  warnings.warn(
+/kaggle/working/integrated-pipeline-2/forex_lstm/train.py:387: FutureWarning: `torch.cuda.amp.GradScaler(args...)` is deprecated. Please use `torch.amp.GradScaler('cuda', args...)` instead.
+  scaler = GradScaler() if (args.mixed_precision and device == "cuda") else None
+Starting training with 207 training samples, 52 validation samples
+Model: DataParallel(input_size=58, hidden_size=128, num_layers=4, dropout=0.2, bidirectional=True)
+Optimizer: AdamW(lr=0.001, weight_decay=0.0001)
+Scheduler: ReduceLROnPlateau(factor=0.5, patience=5, min_lr=1e-6)
+Early stopping patience: 15 epochs (min_delta=0.0001)
+--------------------------------------------------------------------------------
+/kaggle/working/integrated-pipeline-2/forex_lstm/train.py:423: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+/kaggle/working/integrated-pipeline-2/forex_lstm/train.py:471: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with autocast():
+Epoch   1 | Train Loss: 1.091778 | Train Acc: 0.3671 | Val Loss: 1.041110 | Val Acc: 0.5385 | LR: 0.001000
+  → Saved best model (val_loss: 1.041110)
+Epoch   2 | Train Loss: 0.993847 | Train Acc: 0.5507 | Val Loss: 0.843285 | Val Acc: 0.5385 | LR: 0.001000
+  → Saved best model (val_loss: 0.843285)
+Epoch   3 | Train Loss: 0.856786 | Train Acc: 0.4976 | Val Loss: 0.733859 | Val Acc: 0.4615 | LR: 0.001000
+  → Saved best model (val_loss: 0.733859)
+Epoch   4 | Train Loss: 0.773646 | Train Acc: 0.5266 | Val Loss: 0.720586 | Val Acc: 0.5385 | LR: 0.001000
+  → Saved best model (val_loss: 0.720586)
+Epoch   5 | Train Loss: 0.766900 | Train Acc: 0.5169 | Val Loss: 0.702346 | Val Acc: 0.5385 | LR: 0.001000
+  → Saved best model (val_loss: 0.702346)
+Epoch   6 | Train Loss: 0.757690 | Train Acc: 0.5121 | Val Loss: 0.713708 | Val Acc: 0.5385 | LR: 0.001000
+Epoch   7 | Train Loss: 0.695356 | Train Acc: 0.6135 | Val Loss: 0.695960 | Val Acc: 0.5385 | LR: 0.000500
+  → Saved best model (val_loss: 0.695960)
+Epoch   8 | Train Loss: 0.762072 | Train Acc: 0.4831 | Val Loss: 0.702289 | Val Acc: 0.4615 | LR: 0.000500
+Epoch   9 | Train Loss: 0.772246 | Train Acc: 0.4831 | Val Loss: 0.697435 | Val Acc: 0.5385 | LR: 0.000500
+Epoch  10 | Train Loss: 0.749962 | Train Acc: 0.5314 | Val Loss: 0.695547 | Val Acc: 0.5385 | LR: 0.000500
+  → Saved best model (val_loss: 0.695547)
+Epoch  11 | Train Loss: 0.720247 | Train Acc: 0.5459 | Val Loss: 0.698176 | Val Acc: 0.5385 | LR: 0.000500
+Epoch  12 | Train Loss: 0.711704 | Train Acc: 0.5459 | Val Loss: 0.701378 | Val Acc: 0.5385 | LR: 0.000500
+Epoch  13 | Train Loss: 0.741550 | Train Acc: 0.5169 | Val Loss: 0.699482 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  14 | Train Loss: 0.739687 | Train Acc: 0.5169 | Val Loss: 0.698824 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  15 | Train Loss: 0.707676 | Train Acc: 0.5845 | Val Loss: 0.698421 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  16 | Train Loss: 0.700009 | Train Acc: 0.5556 | Val Loss: 0.697867 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  17 | Train Loss: 0.711157 | Train Acc: 0.5749 | Val Loss: 0.696946 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  18 | Train Loss: 0.727251 | Train Acc: 0.4976 | Val Loss: 0.697172 | Val Acc: 0.5385 | LR: 0.000250
+Epoch  19 | Train Loss: 0.722102 | Train Acc: 0.5266 | Val Loss: 0.697735 | Val Acc: 0.5385 | LR: 0.000125
+Epoch  20 | Train Loss: 0.717801 | Train Acc: 0.5169 | Val Loss: 0.697604 | Val Acc: 0.5385 | LR: 0.000125
+Epoch  21 | Train Loss: 0.736247 | Train Acc: 0.4541 | Val Loss: 0.696158 | Val Acc: 0.5385 | LR: 0.000125
+Epoch  22 | Train Loss: 0.711481 | Train Acc: 0.5362 | Val Loss: 0.695998 | Val Acc: 0.5385 | LR: 0.000125
+Epoch  23 | Train Loss: 0.719659 | Train Acc: 0.5217 | Val Loss: 0.695162 | Val Acc: 0.5385 | LR: 0.000125
+  → Saved best model (val_loss: 0.695162)
+Epoch  24 | Train Loss: 0.713689 | Train Acc: 0.5169 | Val Loss: 0.694702 | Val Acc: 0.5385 | LR: 0.000125
+  → Saved best model (val_loss: 0.694702)
+Epoch  25 | Train Loss: 0.707545 | Train Acc: 0.5411 | Val Loss: 0.694392 | Val Acc: 0.5385 | LR: 0.000063
+  → Saved best model (val_loss: 0.694392)
+Epoch  26 | Train Loss: 0.693882 | Train Acc: 0.5652 | Val Loss: 0.694486 | Val Acc: 0.5385 | LR: 0.000063
+Epoch  27 | Train Loss: 0.711258 | Train Acc: 0.5556 | Val Loss: 0.694317 | Val Acc: 0.5385 | LR: 0.000063
+Epoch  28 | Train Loss: 0.710281 | Train Acc: 0.5217 | Val Loss: 0.694017 | Val Acc: 0.5385 | LR: 0.000063
+  → Saved best model (val_loss: 0.694017)
+Epoch  29 | Train Loss: 0.731082 | Train Acc: 0.4831 | Val Loss: 0.694345 | Val Acc: 0.5385 | LR: 0.000063
+Epoch  30 | Train Loss: 0.715152 | Train Acc: 0.5556 | Val Loss: 0.694336 | Val Acc: 0.5385 | LR: 0.000063
+Epoch  31 | Train Loss: 0.720533 | Train Acc: 0.4589 | Val Loss: 0.694420 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  32 | Train Loss: 0.710837 | Train Acc: 0.5652 | Val Loss: 0.694458 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  33 | Train Loss: 0.710817 | Train Acc: 0.5266 | Val Loss: 0.694777 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  34 | Train Loss: 0.691564 | Train Acc: 0.5652 | Val Loss: 0.694834 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  35 | Train Loss: 0.702074 | Train Acc: 0.5169 | Val Loss: 0.694777 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  36 | Train Loss: 0.722742 | Train Acc: 0.4831 | Val Loss: 0.694655 | Val Acc: 0.5385 | LR: 0.000031
+Epoch  37 | Train Loss: 0.725330 | Train Acc: 0.5024 | Val Loss: 0.694683 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  38 | Train Loss: 0.698564 | Train Acc: 0.5749 | Val Loss: 0.694561 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  39 | Train Loss: 0.714578 | Train Acc: 0.5024 | Val Loss: 0.694665 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  40 | Train Loss: 0.707805 | Train Acc: 0.5217 | Val Loss: 0.694533 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  41 | Train Loss: 0.718217 | Train Acc: 0.4928 | Val Loss: 0.694317 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  42 | Train Loss: 0.733744 | Train Acc: 0.4976 | Val Loss: 0.694439 | Val Acc: 0.5385 | LR: 0.000016
+Epoch  43 | Train Loss: 0.696610 | Train Acc: 0.5266 | Val Loss: 0.694486 | Val Acc: 0.5385 | LR: 0.000008
+
+Early stopping triggered after 43 epochs (patience: 15)
+Best validation loss: 0.694017, Best validation accuracy: 0.5385
+Loaded best model from epoch 28
+
+Training completed!
+Best model saved: /kaggle/working/LSTM_Model_Output/best_model.pt
+Scaler saved: /kaggle/working/LSTM_Model_Output/scaler_20251101_095305.pkl
+Final validation accuracy: 0.5385
+
+Training Summary:
+- Total epochs trained: 43
+- Best epoch: 1
+- Final learning rate: 0.000008
+- Training time: ~21.5 minutes (estimated)
+Training curves saved: /kaggle/working/LSTM_Model_Output/training_curves_20251101_095306.png
+
+Overfitting Analysis:
+- Final train loss: 0.696610
+- Final val loss:   0.694486
+- Loss gap (train - val): 0.002124
+- Final train acc: 0.526570
+- Final val acc:   0.538462
+- Acc gap (train - val): -0.011891

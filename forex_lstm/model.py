@@ -24,12 +24,14 @@ class LSTMClassifier(nn.Module):
         # Calculate output size considering bidirectional
         lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
 
-        # Enhanced classifier head with multiple dense layers
+        # Enhanced classifier head with batch normalization for smoother training
         self.classifier = nn.Sequential(
             nn.Linear(lstm_output_size, hidden_size // 2),
+            nn.BatchNorm1d(hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.BatchNorm1d(hidden_size // 4),
             nn.ReLU(),
             nn.Dropout(dropout / 2),  # Lighter dropout for final layer
             nn.Linear(hidden_size // 4, num_classes)

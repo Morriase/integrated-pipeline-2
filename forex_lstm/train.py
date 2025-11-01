@@ -54,7 +54,7 @@ else:
     }
 
 
-def train_epoch(model, loader, opt, loss_fn, device):
+def train_epoch(model, loader, opt, loss_fn, device, grad_clip=0.0):
     model.train()
     total_loss = 0.0
     for X, y in loader:
@@ -64,6 +64,11 @@ def train_epoch(model, loader, opt, loss_fn, device):
         pred = model(X)
         loss = loss_fn(pred, y)
         loss.backward()
+
+        # Apply gradient clipping if specified
+        if grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
         opt.step()
         total_loss += loss.item() * X.size(0)
     return total_loss / len(loader.dataset)
@@ -96,30 +101,30 @@ def main():
                         help="Number of bars to download")
     parser.add_argument("--seq-len", type=int, default=60,
                         help="Sequence length for LSTM")
-    parser.add_argument("--batch", type=int, default=64,
-                        help="Batch size")
-    parser.add_argument("--epochs", type=int, default=100,
+    parser.add_argument("--batch", type=int, default=32,
+                        help="Batch size (smaller for better convergence with small datasets)")
+    parser.add_argument("--epochs", type=int, default=200,
                         help="Maximum number of epochs (early stopping may stop earlier)")
-    parser.add_argument("--lr", type=float, default=1e-3,
-                        help="Initial learning rate")
-    parser.add_argument("--weight-decay", type=float, default=1e-4,
-                        help="L2 regularization weight decay")
+    parser.add_argument("--lr", type=float, default=5e-4,
+                        help="Initial learning rate (lower for smoother convergence)")
+    parser.add_argument("--weight-decay", type=float, default=1e-5,
+                        help="L2 regularization weight decay (lighter for small datasets)")
     parser.add_argument("--optimizer", type=str, default="adamw", choices=["adam", "adamw", "sgd", "rmsprop"],
                         help="Optimizer to use (adamw recommended for better generalization)")
     parser.add_argument("--momentum", type=float, default=0.9,
                         help="Momentum for SGD optimizer (0.9 recommended)")
     parser.add_argument("--nesterov", action="store_true", default=True,
                         help="Use Nesterov momentum for SGD (improves convergence)")
-    parser.add_argument("--hidden", type=int, default=128,
-                        help="LSTM hidden size")
-    parser.add_argument("--num-layers", type=int, default=4,
+    parser.add_argument("--hidden", type=int, default=256,
+                        help="LSTM hidden size (increased for richer features)")
+    parser.add_argument("--num-layers", type=int, default=3,
                         help="Number of LSTM layers")
-    parser.add_argument("--dropout", type=float, default=0.2,
-                        help="Dropout rate")
+    parser.add_argument("--dropout", type=float, default=0.3,
+                        help="Dropout rate (increased for better regularization)")
     parser.add_argument("--bidirectional", action="store_true", default=True,
                         help="Use bidirectional LSTM")
-    parser.add_argument("--patience", type=int, default=15,
-                        help="Early stopping patience (epochs)")
+    parser.add_argument("--patience", type=int, default=30,
+                        help="Early stopping patience (epochs, increased for more training)")
     parser.add_argument("--min-delta", type=float, default=1e-4,
                         help="Minimum change to qualify as an improvement")
     parser.add_argument("--lr-schedule", action="store_true", default=True,
@@ -140,8 +145,10 @@ def main():
                         help="Use Triple Barrier Method for signal validation")
     parser.add_argument("--min-adx", type=float, default=20.0,
                         help="Minimum ADX threshold for trend strength filtering")
-    parser.add_argument("--quality-threshold", type=float, default=0.7,
+    parser.add_argument("--quality-threshold", type=float, default=0.3,
                         help="Minimum quality score threshold for signals (0.0-1.0)")
+    parser.add_argument("--grad-clip", type=float, default=1.0,
+                        help="Gradient clipping threshold (0 to disable)")
     args = parser.parse_args()
 
     # CUDA optimizations
@@ -375,10 +382,10 @@ def main():
                 opt, T_0=10, T_mult=2, eta_min=args.lr * 0.01)
             scheduler_name = f"CosineAnnealingWarmRestarts(T_0=10, eta_min={args.lr * 0.01:.1e})"
         else:
-            # ReduceLROnPlateau for adaptive optimizers
+            # ReduceLROnPlateau for adaptive optimizers (more patient for smoother curves)
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                opt, mode='max', factor=0.5, patience=5, min_lr=1e-6, verbose=False)
-            scheduler_name = f"ReduceLROnPlateau(factor=0.5, patience=5, min_lr=1e-6)"
+                opt, mode='max', factor=0.7, patience=10, min_lr=1e-7, verbose=False)
+            scheduler_name = f"ReduceLROnPlateau(factor=0.7, patience=10, min_lr=1e-7)"
     else:
         scheduler = None
         scheduler_name = "None"
@@ -386,7 +393,19 @@ def main():
     # Mixed precision scaler
     scaler = GradScaler() if (args.mixed_precision and device == "cuda") else None
 
-    loss_fn = nn.CrossEntropyLoss()
+    # Calculate class weights for imbalanced dataset
+    unique_classes, class_counts = np.unique(y_train, return_counts=True)
+    total_samples = len(y_train)
+    class_weights = total_samples / (len(unique_classes) * class_counts)
+    class_weights_tensor = torch.FloatTensor(class_weights).to(device)
+
+    print(f"\n📊 Class distribution in training set:")
+    for cls, count, weight in zip(unique_classes, class_counts, class_weights):
+        print(
+            f"   Class {cls}: {count} samples ({100*count/total_samples:.1f}%) → weight: {weight:.3f}")
+
+    loss_fn = nn.CrossEntropyLoss(
+        weight=class_weights_tensor, label_smoothing=0.1)
 
     # Training tracking
     best_val_loss = float('inf')
@@ -428,9 +447,10 @@ def main():
                 scaler.scale(loss).backward()
 
                 # Gradient clipping (unscale first for proper clipping)
-                scaler.unscale_(opt)
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=1.0)
+                if args.grad_clip > 0:
+                    scaler.unscale_(opt)
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=args.grad_clip)
 
                 # Optimizer step with scaler
                 scaler.step(opt)
@@ -442,8 +462,9 @@ def main():
                 loss.backward()
 
                 # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), max_norm=1.0)
+                if args.grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        model.parameters(), max_norm=args.grad_clip)
 
                 opt.step()
 
