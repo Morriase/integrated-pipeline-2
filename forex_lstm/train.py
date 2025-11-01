@@ -445,23 +445,26 @@ def main():
     if not args.no_class_weights:
         class_weights = total_samples / (len(unique_classes) * class_counts)
         class_weights = np.clip(class_weights, 0.1, args.max_class_weight)
-        class_weights = class_weights * len(unique_classes) / class_weights.sum()
+        class_weights = class_weights * \
+            len(unique_classes) / class_weights.sum()
         class_weights_tensor = torch.FloatTensor(class_weights).to(device)
-        
+
         print("   Applied class weights (capped):")
         for cls, weight in zip(unique_classes, class_weights):
             print(f"      Class {cls} → weight: {weight:.3f}")
     else:
         print("   Using uniform class weights (no weighting)")
         class_weights_tensor = None
-    
+
     # Select loss function
     if args.focal_loss:
-        print(f"   Using Focal Loss (gamma={args.focal_gamma}, better for extreme imbalance)")
+        print(
+            f"   Using Focal Loss (gamma={args.focal_gamma}, better for extreme imbalance)")
         loss_fn = FocalLoss(alpha=class_weights_tensor, gamma=args.focal_gamma)
     else:
         if class_weights_tensor is not None:
-            loss_fn = nn.CrossEntropyLoss(weight=class_weights_tensor, label_smoothing=0.1)
+            loss_fn = nn.CrossEntropyLoss(
+                weight=class_weights_tensor, label_smoothing=0.1)
         else:
             loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 

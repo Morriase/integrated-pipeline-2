@@ -8,17 +8,19 @@ class FocalLoss(nn.Module):
     Focal Loss for handling extreme class imbalance.
     Reduces loss for well-classified examples, focuses on hard examples.
     """
+
     def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
         super().__init__()
         self.alpha = alpha  # Class weights
         self.gamma = gamma  # Focusing parameter
         self.reduction = reduction
-    
+
     def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
+        ce_loss = F.cross_entropy(
+            inputs, targets, reduction='none', weight=self.alpha)
         pt = torch.exp(-ce_loss)  # Probability of correct class
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-        
+
         if self.reduction == 'mean':
             return focal_loss.mean()
         elif self.reduction == 'sum':
