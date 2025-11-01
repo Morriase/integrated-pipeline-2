@@ -27,6 +27,8 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 
+from sklearn.preprocessing import MinMaxScaler
+
 from .data import (download_ticker, load_csv, prepare_ohlc_series, scale_series, save_scaler,
                    generate_smc_labels, generate_enhanced_smc_labels, initialize_mt5,
                    evaluate_walk_forward, detect_trend_direction, calculate_adx)
@@ -191,7 +193,6 @@ def main():
                 if 'label' in df.columns:
                     print(
                         f"Label distribution: {df['label'].value_counts().to_dict()}")
-            series = prepare_ohlc_series(df)
             dataset_found = True
             break
 
@@ -213,31 +214,54 @@ def main():
             save_path = f"DATA/{args.ticker}_{args.timeframe}_{args.bars}bars.csv"
             df = download_ticker(
                 args.ticker, TIMEFRAME_MAP[args.timeframe], args.bars, save_path)
-        series = prepare_ohlc_series(df)
-    close_series = series[['Close']]
-    scaled, scaler = scale_series(close_series)
 
-    seqs, targets = create_sequences(scaled, args.seq_len)
+    scaler_to_save = None
+    seqs = None
+    labels = None
+    quality_scores = None
 
-    # Use existing labels if available, otherwise generate SMC-based labels
-    if 'label' in df.columns and dataset_found:
+    if dataset_found and 'label' in df.columns:
         print("Using pre-computed labels from dataset")
-        # Align labels with sequences (labels correspond to the end of each sequence)
-        all_labels = df['label'].values
-        labels = all_labels[args.seq_len:]  # Skip first seq_len labels
-        labels = labels[:len(seqs)]  # Ensure same length as sequences
 
-        # Apply quality filtering if quality scores are available
-        if 'quality_score' in df.columns and args.quality_threshold > 0:
-            quality_scores = df['quality_score'].values[args.seq_len:len(
-                seqs)+args.seq_len]
-            quality_mask = quality_scores >= args.quality_threshold
-            print(f"Applying quality threshold {args.quality_threshold}: "
-                  f"{np.sum(quality_mask)}/{len(quality_mask)} signals retained")
-            # Filter sequences and labels
-            seqs = seqs[quality_mask]
-            labels = labels[quality_mask]
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        exclude_cols = {
+            'label', 'quality_score', 'tbm_outcome', 'raw_signal_label',
+            'signal_direction'
+        }
+        feature_cols = [col for col in numeric_cols if col not in exclude_cols]
+
+        if not feature_cols:
+            raise ValueError(
+                "No numeric feature columns available for training sequences.")
+
+        feature_matrix = df[feature_cols].values
+        feature_scaler = MinMaxScaler()
+        scaled_features = feature_scaler.fit_transform(feature_matrix)
+        scaler_to_save = feature_scaler
+
+        seqs, _ = create_sequences(scaled_features, args.seq_len)
+
+        all_labels = df['label'].values
+        labels = all_labels[args.seq_len:args.seq_len + len(seqs)]
+
+        if 'quality_score' in df.columns:
+            quality_scores = df['quality_score'].values[args.seq_len:args.seq_len +
+                                                        len(seqs)]
+            if args.quality_threshold > 0:
+                quality_mask = quality_scores >= args.quality_threshold
+                print(f"Applying quality threshold {args.quality_threshold}: "
+                      f"{np.sum(quality_mask)}/{len(quality_mask)} signals retained")
+                seqs = seqs[quality_mask]
+                labels = labels[quality_mask]
+                quality_scores = quality_scores[quality_mask]
     else:
+        series = prepare_ohlc_series(df)
+        close_series = series[['Close']]
+        scaled, scaler = scale_series(close_series)
+        scaler_to_save = scaler
+
+        seqs, _ = create_sequences(scaled, args.seq_len)
+
         # Generate enhanced SMC labels with trend filtering and triple barrier method
         if args.trend_filter or args.triple_barrier:
             print(
@@ -523,7 +547,10 @@ def main():
     # Save final scaler
     scaler_path = os.path.join(
         args.out_dir, f"scaler_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl")
-    save_scaler(scaler, scaler_path)
+    if scaler_to_save is not None:
+        save_scaler(scaler_to_save, scaler_path)
+    else:
+        print("Warning: No scaler available to save (skipping scaler export).")
 
     print(f"\nTraining completed!")
     print(f"Best model saved: {best_ckpt_path}")
@@ -613,9 +640,12 @@ def plot_training_curves(training_history, out_dir):
     loss_gap = final_train_loss - final_val_loss
     acc_gap = final_train_acc - final_val_acc
 
-    print(".6f")
-    print(".6f")
-    print(".6f")
+    print(f"- Final train loss: {final_train_loss:.6f}")
+    print(f"- Final val loss:   {final_val_loss:.6f}")
+    print(f"- Loss gap (train - val): {loss_gap:.6f}")
+    print(f"- Final train acc: {final_train_acc:.6f}")
+    print(f"- Final val acc:   {final_val_acc:.6f}")
+    print(f"- Acc gap (train - val): {acc_gap:.6f}")
 
     if loss_gap > 0.1:
         print("⚠️  WARNING: Large loss gap suggests potential overfitting!")
