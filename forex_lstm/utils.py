@@ -9,7 +9,7 @@ class SequenceDataset(Dataset):
     def __init__(self, sequences: np.ndarray, targets: np.ndarray):
         # sequences: (N, seq_len, features)
         self.X = sequences.astype(np.float32)
-        self.y = targets.astype(np.long)  # For classification
+        self.y = targets.astype(np.int64)  # For classification compatibility
 
     def __len__(self):
         return len(self.X)
