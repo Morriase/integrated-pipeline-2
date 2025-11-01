@@ -513,7 +513,10 @@ def main():
 
     # Load best model for final evaluation
     if os.path.exists(best_ckpt_path):
-        checkpoint = torch.load(best_ckpt_path)
+        map_location = torch.device(
+            device) if isinstance(device, str) else device
+        checkpoint = torch.load(
+            best_ckpt_path, map_location=map_location, weights_only=False)
         model.load_state_dict(checkpoint['model_state'])
         print(f"Loaded best model from epoch {checkpoint['epoch']}")
 
