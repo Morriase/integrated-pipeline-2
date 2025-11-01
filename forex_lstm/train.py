@@ -145,14 +145,16 @@ def main():
                         help="Use Triple Barrier Method for signal validation")
     parser.add_argument("--min-adx", type=float, default=20.0,
                         help="Minimum ADX threshold for trend strength filtering")
-    parser.add_argument("--quality-threshold", type=float, default=0.3,
-                        help="Minimum quality score threshold for signals (0.0-1.0)")
+    parser.add_argument("--quality-threshold", type=float, default=0.0,
+                        help="Minimum quality score threshold for signals (0.0=disable, 1.0=max)")
     parser.add_argument("--grad-clip", type=float, default=1.0,
                         help="Gradient clipping threshold (0 to disable)")
     parser.add_argument("--no-class-weights", action="store_true", default=False,
                         help="Disable class weighting (use uniform weights)")
     parser.add_argument("--max-class-weight", type=float, default=10.0,
                         help="Maximum allowed class weight to prevent extreme imbalance")
+    parser.add_argument("--binary-classification", action="store_true", default=False,
+                        help="Convert to binary: class 2 (win) vs classes 0,1 (not-win)")
     args = parser.parse_args()
 
     # CUDA optimizations
@@ -310,17 +312,27 @@ def main():
     else:
         labels = labels.astype(int)
 
+    # Convert to binary classification if requested (more robust for imbalanced data)
+    if args.binary_classification:
+        print("🔄 Converting to binary classification: Win (1) vs Not-Win (0)")
+        # Map: class 2 (original win) → 1, classes 0,1 (loss/neutral) → 0
+        labels = (labels == 2).astype(int)
+        print(
+            f"   Binary distribution: {np.sum(labels == 0)} Not-Win, {np.sum(labels == 1)} Win")
+
     # Check for extreme class imbalance before proceeding
     unique_labels, label_counts = np.unique(labels, return_counts=True)
     min_class_samples = label_counts.min()
     max_class_samples = label_counts.max()
     imbalance_ratio = max_class_samples / min_class_samples
-    
+
     if min_class_samples < 100:
-        print(f"\n⚠️  WARNING: Smallest class has only {min_class_samples} samples!")
+        print(
+            f"\n⚠️  WARNING: Smallest class has only {min_class_samples} samples!")
         print(f"   Imbalance ratio: {imbalance_ratio:.1f}:1")
         print(f"   This may cause training instability. Consider:")
-        print(f"   1. Lowering --quality-threshold (current: {args.quality_threshold})")
+        print(
+            f"   1. Lowering --quality-threshold (current: {args.quality_threshold})")
         print(f"   2. Using --no-class-weights flag")
         print(f"   3. Checking dataset quality scores distribution\n")
 
@@ -359,11 +371,15 @@ def main():
         prefetch_factor=2 if device == "cuda" else None
     )
 
+    # Determine number of output classes
+    num_classes = 2 if args.binary_classification else 3
+
     model = LSTMClassifier(
         input_size=X_train.shape[2],
         hidden_size=args.hidden,
         num_layers=args.num_layers,
         dropout=args.dropout,
+        num_classes=num_classes,
         bidirectional=args.bidirectional).to(device)
 
     # Move model to CUDA with optimizations
@@ -414,28 +430,30 @@ def main():
     # Calculate class weights for imbalanced dataset with capping
     unique_classes, class_counts = np.unique(y_train, return_counts=True)
     total_samples = len(y_train)
-    
+
     print(f"\n📊 Class distribution in training set:")
     for cls, count in zip(unique_classes, class_counts):
-        print(f"   Class {cls}: {count} samples ({100*count/total_samples:.1f}%)")
-    
+        print(
+            f"   Class {cls}: {count} samples ({100*count/total_samples:.1f}%)")
+
     if args.no_class_weights:
         print("   Using uniform class weights (no weighting)")
         loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
     else:
         class_weights = total_samples / (len(unique_classes) * class_counts)
-        
+
         # Cap extreme weights to prevent loss function domination
         class_weights = np.clip(class_weights, 0.1, args.max_class_weight)
-        
+
         # Normalize weights so they sum to num_classes
-        class_weights = class_weights * len(unique_classes) / class_weights.sum()
+        class_weights = class_weights * \
+            len(unique_classes) / class_weights.sum()
         class_weights_tensor = torch.FloatTensor(class_weights).to(device)
-        
+
         print("   Applied class weights (capped):")
         for cls, weight in zip(unique_classes, class_weights):
             print(f"      Class {cls} → weight: {weight:.3f}")
-        
+
         loss_fn = nn.CrossEntropyLoss(
             weight=class_weights_tensor, label_smoothing=0.1)
 
