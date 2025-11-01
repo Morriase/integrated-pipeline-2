@@ -15,7 +15,13 @@ class SequenceDataset(Dataset):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return torch.from_numpy(self.X[idx]), torch.from_numpy(self.y[idx])
+        features = torch.from_numpy(self.X[idx])
+        target = self.y[idx]
+        if isinstance(target, np.ndarray):
+            target_tensor = torch.from_numpy(target)
+        else:
+            target_tensor = torch.tensor(target, dtype=torch.long)
+        return features, target_tensor
 
 
 def create_sequences(values, seq_len: int):
